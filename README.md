@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Good First Issues](https://img.shields.io/github/issues/oscarbol09/branchbase/good%20first%20issue?color=7057ff&label=good%20first%20issues)](https://github.com/oscarbol09/branchbase/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/oscarbol09)
+[![Support on Ko-Fi](https://img.shields.io/badge/Support-Ko--Fi-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/oscarmb09)
 
 ---
 
@@ -195,6 +197,17 @@ Thinking about contributing? We'd love to have you!
 ## 🛡️ Security
 
 To report a vulnerability privately, please see [SECURITY.md](SECURITY.md) or use [GitHub Private Vulnerability Reporting](https://github.com/oscarbol09/branchbase/security/advisories/new).
+
+---
+
+## 💖 Support & Sponsorship
+
+If you find **BranchBase** useful in your daily development or it saved you hours of debugging migration mismatches, consider supporting ongoing development:
+
+- 💖 **[Sponsor on GitHub Sponsors](https://github.com/sponsors/oscarbol09)**
+- ☕ **[Buy me a coffee on Ko-Fi](https://ko-fi.com/oscarmb09)**
+
+Your sponsorship helps fund test infrastructure, multi-database driver maintenance, and cross-platform packaging!
 
 ---
 
