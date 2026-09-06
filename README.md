@@ -3,9 +3,11 @@
 > **Zero-config, Git-native local database branching for PostgreSQL, MySQL, and SQLite.**  
 > Stop dropping your local database every time you switch Git branches.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![BranchBase CI](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml/badge.svg)](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Status: RFC & Active Development](https://img.shields.io/badge/Status-RFC%20%2F%20v0.1.0--alpha-blue.svg)](#roadmap)
+[![Good First Issues](https://img.shields.io/github/issues/oscarbol09/branchbase/good%20first%20issue?color=7057ff&label=good%20first%20issues)](https://github.com/oscarbol09/branchbase/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
 ---
 
@@ -70,109 +72,129 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 
 ---
 
-## 🛠️ Quickstart
+## 📖 Command & CLI Reference
 
-### 1. Installation (Upcoming)
-```bash
-# via Homebrew (macOS/Linux)
-brew install branchbase/tap/branchbase
+| Command | What it does |
+| :--- | :--- |
+| `branchbase init` | Interactively inspect repository and generate `.branchbase.json` |
+| `branchbase proxy` | Start the local transparent TCP routing proxy (default port: `5432`) |
+| `branchbase status` | Display the active Git branch, sanitized name, target DB, and driver status |
+| `branchbase list` | List all active and ephemeral databases managed by BranchBase with disk usage |
+| `branchbase switch <branch>` | Manually switch or provision an isolated database for a specific branch |
+| `branchbase prune` | Detect and delete databases associated with merged or deleted Git branches |
+| `branchbase version` | Print the current BranchBase version |
 
-# via Go
-go install github.com/branchbase/branchbase/cmd/branchbase@latest
+---
 
-# via Cargo (Rust)
-cargo install branchbase
+## 📁 Repository Structure
+
+```text
+branchbase/
+├── cmd/
+│   └── branchbase/
+│       └── main.go               # CLI entry point (subcommands & signal handling)
+├── internal/
+│   ├── config/                   # Configuration loader (.branchbase.json / .yaml)
+│   ├── driver/                   # Database engine interfaces & registry
+│   │   ├── driver.go             # Core Driver interface contract
+│   │   ├── postgres/             # PostgreSQL engine (TEMPLATE cloning)
+│   │   └── sqlite/               # SQLite engine (CoW / Reflink snapshots)
+│   ├── git/                      # Git HEAD inspector and branch sanitization
+│   │   ├── resolver.go           # Non-subshell .git/HEAD resolution
+│   │   └── resolver_test.go      # Table-driven unit test suite
+│   └── proxy/                    # Transparent TCP proxy & wire routing
+│       └── proxy.go              # Zero-overhead bidirectional TCP forwarder
+├── .agents/                      # Custom Agent skills & development workflows
+├── .github/                      # CI workflows, issue templates, dependabot
+├── ARCHITECTURE.md               # Detailed system design & sequence diagrams
+├── CONTRIBUTING.md               # Contributor guide & driver creation tutorial
+├── SETUP.md                      # Local developer environment setup guide
+├── SECURITY.md                   # Security policy & private vulnerability reporting
+├── CODE_OF_CONDUCT.md            # Contributor Covenant v2.1
+├── CHANGELOG.md                  # Keep a Changelog version history
+├── branchbase.example.yaml       # Annotated configuration specification
+└── go.mod                        # Go 1.22+ module definition
 ```
 
-### 2. Initialize in your Repository
-Navigate to your project root (where your `.git` and `docker-compose.yml` live):
+---
 
+## ⚙️ How It Works (Step-by-Step)
+
+1. **Detection:** When you run `git checkout <branch>`, BranchBase's hook (`.git/hooks/post-checkout`) detects the branch transition in under 5ms by reading `.git/HEAD`.
+2. **Identifier Sanitization:** Special characters like `/` or `-` in branch names (e.g. `feature/stripe-v2`) are converted into safe database identifiers (`feature_stripe_v2`).
+3. **Copy-on-Write Snapshot:**
+   * **PostgreSQL:** Disconnects lingering connections to the template and executes `CREATE DATABASE <target> TEMPLATE <source>;` (instant CoW clone).
+   * **SQLite:** Issues `PRAGMA wal_checkpoint(TRUNCATE);` and performs a filesystem reflink/clone (`clonefile()` or `FICLONE`).
+4. **Transparent Routing:** When your backend app queries `localhost:5432`, the BranchBase proxy intercepts the connection, resolves the active branch database, and forwards traffic seamlessly.
+5. **Lifecycle Pruning:** Once a PR is merged into `main`, running `branchbase prune` removes the ephemeral database, freeing disk space.
+
+---
+
+## 🧩 Extension Model: Adding a New Database Driver
+
+External engines are pluggable by design. Adding a new database driver requires just 1 package and 1 interface implementation:
+
+```go
+// internal/driver/driver.go
+type Driver interface {
+    Name() string
+    Ping(ctx context.Context) error
+    BranchExists(ctx context.Context, branchName string) (bool, error)
+    CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error
+    DeleteBranch(ctx context.Context, branchName string) error
+    ListBranches(ctx context.Context) ([]BranchInfo, error)
+}
+```
+
+1. Create `internal/driver/<engine>/<engine>.go`.
+2. Implement the `Driver` interface.
+3. Register your factory via `driver.Register("<engine>", factory)` in `init()`.
+4. See our dedicated [Driver Development Skill](.agents/skills/branchbase-driver/SKILL.md) for full instructions.
+
+---
+
+## 🛠️ Quickstart
+
+### 1. Initialize in your Repository
 ```bash
 cd my-awesome-project
 branchbase init
 ```
 
-This will interactively detect your local database configuration and generate `.branchbase.yaml`:
-
-```yaml
-version: "1"
-driver: postgres
-connection:
-  host: "127.0.0.1"
-  port: 5433         # Real underlying Postgres port (Docker)
-  user: "postgres"
-  password: "password"
-  base_database: "myapp_dev"
-
-proxy:
-  listen_port: 5432   # App points here!
-  default_branch: "main"
-
-strategy:
-  snapshot_on_switch: true
-  auto_prune_merged: true
+### 2. Start the Transparent Proxy
+```bash
+branchbase proxy
 ```
 
-### 3. Start the Transparent Proxy
+### 3. Work with Git as you always do!
 ```bash
-branchbase proxy start
-```
-
-### 4. Work with Git as you always do!
-```bash
-# You are on main with 1,000 seeded rows
+# Branch to a new feature:
 git checkout -b feature/stripe-billing
 
-# BranchBase instantly creates `myapp_dev_feature_stripe_billing` from `myapp_dev`
-# Now run your new migrations:
+# Run migrations freely:
 npx prisma migrate dev  # or rails db:migrate / alembic upgrade head
 
-# Switch back to main:
+# Switch back to main whenever you want:
 git checkout main
-# Proxy immediately routes traffic back to `myapp_dev`! No migration errors!
+# Proxy immediately routes traffic back to your main database! No migration errors!
 ```
-
----
-
-## 🧩 Supported Databases
-
-| Engine | Branching Mechanism | Status |
-| :--- | :--- | :--- |
-| **PostgreSQL** | `CREATE DATABASE ... TEMPLATE` / CoW | 🟡 Active MVP |
-| **SQLite** | Reflink / Fast File Copy / WAL checkpoint | 🟡 Active MVP |
-| **MySQL / MariaDB** | Schema dump + Data piping / Docker Volume Snapshot | ⚪ Planned (v0.2) |
-| **MongoDB** | Ephemeral DB namespaces | ⚪ Exploring |
-
----
-
-## 🗺️ Project Roadmap & Milestones
-
-- [x] **Phase 0:** Problem validation, RFC, architectural design, community alignment.
-- [ ] **Phase 1 (MVP):**
-  - [ ] Git branch context resolver (`HEAD` watcher).
-  - [ ] PostgreSQL engine driver (`TEMPLATE` based cloning).
-  - [ ] Transparent TCP proxy for Postgres protocol routing.
-  - [ ] CLI commands: `init`, `status`, `switch`, `list`, `prune`.
-- [ ] **Phase 2:**
-  - [ ] SQLite driver with APFS/Btrfs CoW and cross-platform fallback.
-  - [ ] Automatic Docker Compose integration (auto-detect exposed ports).
-  - [ ] Terminal UI (TUI) via `bubbletea` or `ratatui`.
-- [ ] **Phase 3:**
-  - [ ] MySQL / MariaDB engine driver.
-  - [ ] Seed data sharing between branches without re-migrating.
-
-See our [ROADMAP.md](ROADMAP.md) for full technical milestones.
 
 ---
 
 ## 🤝 Contributing & Community
 
-BranchBase is being built **in public from day zero**. We are actively looking for:
-* **Core maintainers and contributors** (Go / Rust / Database internals).
-* **Database Driver authors** (Postgres, MySQL, SQLite, MongoDB).
-* **Testing volunteers** across different ORMs (Prisma, Drizzle, Django, Rails, Hibernate, SQLAlchemy).
+Thinking about contributing? We'd love to have you!
 
-Read our [CONTRIBUTING.md](CONTRIBUTING.md) to get started. Don't hesitate to open an issue or start a Discussion!
+- **New Contributors:** Check our [`good first issue`](https://github.com/oscarbol09/branchbase/labels/good%20first%20issue) label for onboarding tasks.
+- **Contributor Guide:** Read [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards, Conventional Commits, and PR rules.
+- **Environment Setup:** See [SETUP.md](SETUP.md) for local Go and Docker development steps.
+- **Code of Conduct:** All interactions are governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## 🛡️ Security
+
+To report a vulnerability privately, please see [SECURITY.md](SECURITY.md) or use [GitHub Private Vulnerability Reporting](https://github.com/oscarbol09/branchbase/security/advisories/new).
 
 ---
 

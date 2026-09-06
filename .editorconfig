@@ -1,0 +1,41 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# Top-most EditorConfig file
+root = true
+
+# Unix-style newlines with a newline ending every file
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+# Go uses tabs for indentation
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# YAML files (configs, workflows)
+[*.{yaml,yml}]
+indent_style = space
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_style = space
+indent_size = 2
+
+# Markdown documentation
+[*.md]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+# Makefiles and Shell scripts
+[Makefile]
+indent_style = tab
+
+[*.sh]
+indent_style = space
+indent_size = 2
+end_of_line = lf
