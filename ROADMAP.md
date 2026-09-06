@@ -6,30 +6,33 @@ This document outlines the milestones and engineering priorities for **BranchBas
 
 ## 🎯 Release Milestones
 
-### 📍 Phase 0: Project Inception & RFC (Current)
+### 📍 Phase 0: Project Inception & RFC (Completed ✅)
 - [x] Initial problem definition & community validation.
 - [x] Architectural design specification (`ARCHITECTURE.md`).
 - [x] Contributor guidelines & developer experience scaffolding.
-- [ ] Open Call for Core Collaborators on GitHub Discussions / Twitter / Reddit / Hacker News.
+- [x] Open Call for Core Collaborators on GitHub Discussions (#6).
 
-### 📍 Phase 1: MVP Release (v0.1.0-alpha)
-*Focus: End-to-end working loop for PostgreSQL + Git Hooks on macOS and Linux.*
-- [ ] **CLI Core Framework:**
-  - `branchbase init`: Detect Git repository and interactive database config.
-  - `branchbase status`: Display active branch, attached database, and disk size.
+### 📍 Phase 1: MVP Release (v0.1.0-alpha - Completed ✅)
+*Focus: End-to-end working loop for PostgreSQL + Git Hooks on macOS, Linux, and Windows.*
+- [x] **CLI Core Framework:**
+  - `branchbase init`: Detect Git repository, create `.branchbase.json`, and install hooks.
+  - `branchbase status`: Display active branch, attached database, proxy port, and hook status.
   - `branchbase list`: List all managed branch databases.
   - `branchbase switch <branch>`: Manual switch fallback.
-- [ ] **Git Hook Engine:**
+- [x] **Git Hook Engine:**
   - Automated installation into `.git/hooks/post-checkout` and `.git/hooks/post-merge`.
-  - Non-intrusive hook runner with execution timeout safeguards.
-- [ ] **PostgreSQL Driver:**
+  - Non-intrusive hook runner with 5-second execution timeout safeguards.
+  - `branchbase hooks [install|uninstall|status]` CLI management.
+- [x] **PostgreSQL Driver:**
   - Connection pooling and connection termination for `TEMPLATE` cloning.
   - Safe sanitization of Git branch names to valid PostgreSQL identifiers.
-- [ ] **Transparent TCP Proxy (v1):**
-  - PostgreSQL wire-protocol packet rewriter for `StartupMessage`.
+- [x] **Transparent TCP Proxy (v1):**
+  - PostgreSQL wire-protocol packet rewriter for `StartupMessage` (`internal/proxy/pgwire`).
+  - SSL negotiation handler ('N' decline for local inspection).
   - Zero-latency bidirectional streaming.
-- [ ] **Automated Testing Suite:**
-  - End-to-end integration tests using Docker and testcontainers.
+- [x] **Automated Testing Suite:**
+  - Multi-OS GitHub Actions CI workflow (Ubuntu, macOS, Windows).
+  - Unit test suite for resolver, config, pgwire, hooks, and drivers.
 
 ### 📍 Phase 2: SQLite & Multi-OS Hardening (v0.2.0)
 *Focus: Single-file SQLite databases & cross-platform support.*

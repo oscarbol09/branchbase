@@ -11,6 +11,7 @@ import (
 
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/git"
+	"github.com/branchbase/branchbase/internal/proxy/pgwire"
 )
 
 // Server represents the transparent TCP proxy
@@ -98,7 +99,39 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		_ = backendConn.Close()
 	}()
 
-	// 3. Bidirectional streaming (zero-overhead pipe)
+	// 3. PostgreSQL Wire Protocol Handshake Inspection & Rewriting
+	packet, err := pgwire.ReadStartupPacket(clientConn)
+	if err != nil {
+		log.Printf("[BranchBase Proxy] Error reading client startup packet: %v", err)
+		return
+	}
+
+	// Handle SSL negotiation: reply 'N' (SSL unsupported) so client continues in plaintext
+	if pgwire.IsSSLRequest(packet) {
+		if _, err := clientConn.Write([]byte{'N'}); err != nil {
+			log.Printf("[BranchBase Proxy] Error responding to SSL request: %v", err)
+			return
+		}
+		packet, err = pgwire.ReadStartupPacket(clientConn)
+		if err != nil {
+			log.Printf("[BranchBase Proxy] Error reading startup packet after SSL negotiation: %v", err)
+			return
+		}
+	}
+
+	// Rewrite target database to the branch-specific database
+	rewrittenPacket, err := pgwire.RewriteDatabase(packet, targetDB)
+	if err != nil {
+		log.Printf("[BranchBase Proxy] Warning: could not rewrite database, forwarding raw: %v", err)
+		rewrittenPacket = packet
+	}
+
+	if _, err := backendConn.Write(rewrittenPacket); err != nil {
+		log.Printf("[BranchBase Proxy] Error forwarding startup packet to backend: %v", err)
+		return
+	}
+
+	// 4. Bidirectional streaming (zero-overhead pipe)
 	errChan := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(backendConn, clientConn)
