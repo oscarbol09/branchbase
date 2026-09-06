@@ -33,7 +33,7 @@ func NewServer(cfg *config.Config, repoPath string) *Server {
 
 // Start begins listening for incoming application database connections
 func (s *Server) Start(ctx context.Context) error {
-	addr := fmt.Sprintf("127.0.0.1:%d", s.cfg.Proxy.ListenPort)
+	addr := net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", s.cfg.Proxy.ListenPort))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to bind proxy to %s: %w", addr, err)
@@ -73,7 +73,9 @@ func (s *Server) acceptLoop() {
 }
 
 func (s *Server) handleConnection(clientConn net.Conn) {
-	defer clientConn.Close()
+	defer func() {
+		_ = clientConn.Close()
+	}()
 
 	// 1. Resolve active Git branch for this repository
 	activeBranch, err := git.ResolveCurrentBranch(s.repoPath)
@@ -86,13 +88,15 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	log.Printf("[BranchBase Proxy] Routing client connection -> Branch: %q (DB: %q)", activeBranch, targetDB)
 
 	// 2. Connect to backend database server
-	backendAddr := fmt.Sprintf("%s:%d", s.cfg.Connection.Host, s.cfg.Connection.Port)
+	backendAddr := net.JoinHostPort(s.cfg.Connection.Host, fmt.Sprintf("%d", s.cfg.Connection.Port))
 	backendConn, err := net.DialTimeout("tcp", backendAddr, 5*time.Second)
 	if err != nil {
 		log.Printf("[BranchBase Proxy] ❌ Failed to connect to backend %s: %v", backendAddr, err)
 		return
 	}
-	defer backendConn.Close()
+	defer func() {
+		_ = backendConn.Close()
+	}()
 
 	// 3. Bidirectional streaming (zero-overhead pipe)
 	errChan := make(chan error, 2)

@@ -36,7 +36,9 @@ func TestResolveCurrentBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		_ = os.RemoveAll(tempDir)
+	}()
 
 	gitDir := filepath.Join(tempDir, ".git")
 	if err := os.Mkdir(gitDir, 0755); err != nil {

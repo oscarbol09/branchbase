@@ -148,7 +148,9 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var branches []driver.BranchInfo
 	for rows.Next() {
