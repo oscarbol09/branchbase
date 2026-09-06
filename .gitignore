@@ -1,0 +1,33 @@
+# Binaries and build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+go.work
+
+# Rust
+target/
+Cargo.lock
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local BranchBase State & Logs
+.branchbase/
+*.log
+
+# Environment variables
+.env
+.env.local
