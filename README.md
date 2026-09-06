@@ -83,6 +83,8 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 | `branchbase status` | Display the active Git branch, sanitized name, target DB, and driver status |
 | `branchbase list` | List all active and ephemeral databases managed by BranchBase with disk usage |
 | `branchbase switch <branch>` | Manually switch or provision an isolated database for a specific branch |
+| `branchbase hooks install` | Install automated `post-checkout` and `post-merge` hooks into `.git/hooks/` |
+| `branchbase hooks status` | Inspect Git hooks installation and activity status |
 | `branchbase prune` | Detect and delete databases associated with merged or deleted Git branches |
 | `branchbase version` | Print the current BranchBase version |
 
@@ -104,7 +106,13 @@ branchbase/
 │   ├── git/                      # Git HEAD inspector and branch sanitization
 │   │   ├── resolver.go           # Non-subshell .git/HEAD resolution
 │   │   └── resolver_test.go      # Table-driven unit test suite
+│   ├── hook/                     # Automated Git hook manager (post-checkout/merge)
+│   │   ├── hook.go               # Non-intrusive hook installer
+│   │   └── hook_test.go          # Hook lifecycle test suite
 │   └── proxy/                    # Transparent TCP proxy & wire routing
+│       ├── pgwire/               # PostgreSQL wire-protocol StartupMessage rewriter
+│       │   ├── pgwire.go         # Packet parser & database replacer
+│       │   └── pgwire_test.go    # Protocol unit test suite
 │       └── proxy.go              # Zero-overhead bidirectional TCP forwarder
 ├── .agents/                      # Custom Agent skills & development workflows
 ├── .github/                      # CI workflows, issue templates, dependabot
