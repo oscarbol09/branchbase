@@ -6,6 +6,16 @@ Whether you want to write code, design new database drivers, report bugs, improv
 
 ---
 
+## 🌱 New to the Project? Start Here!
+
+If you are looking for approachable tasks to get started, check our curated newcomer issues:
+- **[Good First Issues on GitHub](https://github.com/oscarbol09/branchbase/labels/good%20first%20issue)**
+- **[BranchBase on Up For Grabs](https://up-for-grabs.net/)**
+
+Each newcomer issue includes exact file pointers, reproduction steps, and expected behavior. Maintainers are actively available to guide you through your first PR!
+
+---
+
 ## 🎯 How Can You Contribute?
 
 Here are some high-impact areas where we need collaboration:
@@ -30,13 +40,13 @@ Here are some high-impact areas where we need collaboration:
 ## 🛠️ Development Setup
 
 ### Prerequisites
-- **Go** (1.22+ or latest stable) or **Rust** (depending on the core component).
+- **Go** (1.22+ or latest stable).
 - **Docker & Docker Compose** (for running local test databases).
 - **Git** (2.30+).
 
 ### Clone & Build
 ```bash
-git clone https://github.com/branchbase/branchbase.git
+git clone https://github.com/oscarbol09/branchbase.git
 cd branchbase
 
 # Download dependencies
