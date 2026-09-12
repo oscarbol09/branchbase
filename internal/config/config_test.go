@@ -7,6 +7,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	if cfg.Driver != "postgres" {
 		t.Errorf("expected driver 'postgres', got %q", cfg.Driver)
@@ -17,6 +18,7 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestDatabaseNameForBranch(t *testing.T) {
+	t.Parallel()
 	cfg := DefaultConfig()
 	cfg.Connection.BaseDatabase = "myapp_dev"
 	cfg.Proxy.DefaultBranch = "main"
@@ -33,6 +35,7 @@ func TestDatabaseNameForBranch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.branch, func(t *testing.T) {
+			t.Parallel()
 			got := cfg.DatabaseNameForBranch(tt.branch)
 			if got != tt.expected {
 				t.Errorf("DatabaseNameForBranch(%q) = %q; want %q", tt.branch, got, tt.expected)
@@ -42,13 +45,8 @@ func TestDatabaseNameForBranch(t *testing.T) {
 }
 
 func TestSaveAndLoadConfig(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "branchbase_config_test")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tempDir)
-	}()
+	t.Parallel()
+	tempDir := t.TempDir()
 
 	cfg := DefaultConfig()
 	cfg.Connection.BaseDatabase = "custom_dev_db"
@@ -65,5 +63,30 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	if loaded.Connection.BaseDatabase != "custom_dev_db" {
 		t.Errorf("expected 'custom_dev_db', got %q", loaded.Connection.BaseDatabase)
+	}
+}
+
+func TestLoadConfigNotFound(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	_, err := LoadConfig(tempDir)
+	if err == nil {
+		t.Fatal("expected error when loading config from empty directory, got nil")
+	}
+}
+
+func TestLoadConfigCorruptJSON(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	jsonPath := filepath.Join(tempDir, ".branchbase.json")
+	if err := os.WriteFile(jsonPath, []byte(`{invalid-json`), 0644); err != nil {
+		t.Fatalf("failed to write corrupt config: %v", err)
+	}
+
+	_, err := LoadConfig(tempDir)
+	if err == nil {
+		t.Fatal("expected unmarshal error when loading corrupt json, got nil")
 	}
 }

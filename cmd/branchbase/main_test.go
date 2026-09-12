@@ -10,6 +10,7 @@ import (
 )
 
 func TestStatusDatabaseNameNilConfig(t *testing.T) {
+	t.Parallel()
 	got := statusDatabaseName(nil, "feature-x")
 	want := "myapp_dev_feature-x"
 	if got != want {
@@ -18,6 +19,7 @@ func TestStatusDatabaseNameNilConfig(t *testing.T) {
 }
 
 func TestStatusDatabaseNameUsesConfig(t *testing.T) {
+	t.Parallel()
 	cfg := config.DefaultConfig()
 	got := statusDatabaseName(&cfg, "feature-x")
 	want := cfg.DatabaseNameForBranch("feature-x")
@@ -27,6 +29,7 @@ func TestStatusDatabaseNameUsesConfig(t *testing.T) {
 }
 
 func TestStatusOutputJSONMarshal(t *testing.T) {
+	t.Parallel()
 	info := statusOutput{
 		Branch:         "main",
 		Sanitized:      "main",
@@ -52,6 +55,7 @@ func TestStatusOutputJSONMarshal(t *testing.T) {
 }
 
 func TestBuildStatusMissingConfigDefaults(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Not a git repo and no config — should still return graceful defaults, not panic.
 	info, _ := buildStatus(dir)
@@ -74,6 +78,7 @@ func TestBuildStatusMissingConfigDefaults(t *testing.T) {
 }
 
 func TestBuildStatusWithConfig(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := config.DefaultConfig()
 	cfg.Connection.BaseDatabase = "myapp_dev"
