@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `--json` output flag for `branchbase status` providing structured JSON output for scripts and devtools (#17).
+- Bidirectional socket cleanup and channel draining in proxy `handleConnection`, eliminating goroutine and file descriptor leaks on half-close (#18).
+- Defensive bounds checks and error reporting for inverted or corrupted hook markers in `UninstallHooks` (#15).
+- Nil-safe fallback in `runStatus` when `.branchbase.json` is missing or nil (#16).
+- CI matrix compatibility fix for macOS ARM64 runners requiring Go 1.23+ dyld `LC_UUID` (#20).
 - PostgreSQL wire protocol `StartupMessage` packet parser and dynamic rewriter (`internal/proxy/pgwire`).
 - Automated Git hook engine (`internal/hook`) installing `post-checkout` and `post-merge` hooks.
 - CLI subcommands for hook lifecycle management: `branchbase hooks [install|uninstall|status]`.
