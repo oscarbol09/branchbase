@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Idempotent and thread-safe `Server.Stop()` shutdown via `sync.Once`, preventing channel close panics on repeated calls (#35).
+- Accurate `.branchbase.yaml` configuration parsing using `yaml.v3`, preserving defaults for unspecified fields (#36).
+- Explicit `ErrPacketTooLarge` error returned when client startup packets exceed the 10KB limit (#37).
+
 ### Added
 - Native Go fuzz testing (`testing.F`) for `pgwire.ParseStartupMessage` and `git.SanitizeBranchName`.
 - Automated vulnerability scanning in CI via `govulncheck`.
