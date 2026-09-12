@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Config defines the configuration schema for BranchBase
@@ -76,8 +78,10 @@ func LoadConfig(repoPath string) (*Config, error) {
 	}
 
 	yamlPath := filepath.Join(repoPath, ".branchbase.yaml")
-	if _, err := os.Stat(yamlPath); err == nil {
-		// In minimal MVP without external dependencies, we parse basic lines or provide default
+	if bytes, err := os.ReadFile(yamlPath); err == nil {
+		if err := yaml.Unmarshal(bytes, &cfg); err != nil {
+			return nil, err
+		}
 		return &cfg, nil
 	}
 
