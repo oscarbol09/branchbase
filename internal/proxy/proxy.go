@@ -131,7 +131,9 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// 4. Bidirectional streaming (zero-overhead pipe)
+	// 4. Bidirectional streaming. When either direction finishes, close both
+	// sockets so the other io.Copy unblocks, then drain both goroutines before
+	// returning (avoids leaking a blocked copy + FD under half-close).
 	errChan := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(backendConn, clientConn)
@@ -142,6 +144,9 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		errChan <- err
 	}()
 
+	<-errChan
+	_ = clientConn.Close()
+	_ = backendConn.Close()
 	<-errChan
 }
 
