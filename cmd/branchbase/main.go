@@ -138,9 +138,13 @@ func runStatus(cwd string) {
 	sanitized := git.SanitizeBranchName(branch)
 	cfg, err := config.LoadConfig(cwd)
 	var dbName string
-	if err == nil {
+	if cfg != nil {
 		dbName = cfg.DatabaseNameForBranch(sanitized)
 	} else {
+		// cfg is nil (missing config file or LoadConfig returned nil without error)
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Printf("⚠️  Could not load config: %v\n", err)
+		}
 		dbName = "myapp_dev_" + sanitized
 	}
 

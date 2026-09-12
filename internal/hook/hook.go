@@ -91,7 +91,18 @@ func UninstallHooks(repoPath string) error {
 		startIdx := strings.Index(content, hookMarkerStart)
 		endIdx := strings.Index(content, hookMarkerEnd)
 		if startIdx != -1 && endIdx != -1 {
+			// Guard against corrupted or reversed markers (issue #12).
+			// If markers are out of order, the slice would produce invalid
+			// results or panic; warn and skip the file instead.
+			if startIdx >= endIdx {
+				fmt.Fprintf(os.Stderr, "⚠️  Corrupted hook markers in %s (end marker before start); skipping — please remove manually.\n", hookFile)
+				continue
+			}
 			endIdx += len(hookMarkerEnd)
+			if endIdx > len(content) {
+				fmt.Fprintf(os.Stderr, "⚠️  Truncated hook markers in %s; skipping — please remove manually.\n", hookFile)
+				continue
+			}
 			cleaned := content[:startIdx] + content[endIdx:]
 			cleaned = strings.TrimSpace(cleaned)
 
