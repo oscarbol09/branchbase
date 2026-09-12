@@ -127,3 +127,28 @@ func RewriteDatabase(packet []byte, newDatabase string) ([]byte, error) {
 
 	return result, nil
 }
+
+// BuildErrorResponse encodes a PostgreSQL wire-protocol ErrorResponse ('E')
+// with Severity (S), Code (C / SQLSTATE), and Message (M) fields.
+// See https://www.postgresql.org/docs/current/protocol-error-fields.html
+func BuildErrorResponse(severity, code, message string) []byte {
+	var payload bytes.Buffer
+	writeErrorField(&payload, 'S', severity)
+	writeErrorField(&payload, 'V', severity) // non-localized severity (PG 9.6+)
+	writeErrorField(&payload, 'C', code)
+	writeErrorField(&payload, 'M', message)
+	payload.WriteByte(0) // field-list terminator
+
+	// type byte + Int32 length (includes itself, excludes type) + payload
+	pkt := make([]byte, 1+4+payload.Len())
+	pkt[0] = 'E'
+	binary.BigEndian.PutUint32(pkt[1:5], uint32(4+payload.Len()))
+	copy(pkt[5:], payload.Bytes())
+	return pkt
+}
+
+func writeErrorField(buf *bytes.Buffer, fieldType byte, value string) {
+	buf.WriteByte(fieldType)
+	buf.WriteString(value)
+	buf.WriteByte(0)
+}
