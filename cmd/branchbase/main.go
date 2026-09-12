@@ -128,6 +128,15 @@ func runInit(cwd string) {
 	fmt.Println("👉 Run 'branchbase proxy' to start routing application queries!")
 }
 
+// statusDatabaseName resolves the branch database name for status output.
+// A nil cfg (including a LoadConfig (nil, nil) edge case) falls back safely.
+func statusDatabaseName(cfg *config.Config, sanitized string) string {
+	if cfg == nil {
+		return "myapp_dev_" + sanitized
+	}
+	return cfg.DatabaseNameForBranch(sanitized)
+}
+
 func runStatus(cwd string) {
 	branch, err := git.ResolveCurrentBranch(cwd)
 	if err != nil {
@@ -137,12 +146,10 @@ func runStatus(cwd string) {
 
 	sanitized := git.SanitizeBranchName(branch)
 	cfg, err := config.LoadConfig(cwd)
-	var dbName string
-	if err == nil {
-		dbName = cfg.DatabaseNameForBranch(sanitized)
-	} else {
-		dbName = "myapp_dev_" + sanitized
+	if err != nil {
+		cfg = nil
 	}
+	dbName := statusDatabaseName(cfg, sanitized)
 
 	hooksInstalled := hook.AreHooksInstalled(cwd)
 
