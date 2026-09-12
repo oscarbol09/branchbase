@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -13,12 +15,47 @@ const (
 	SSLRequestCode = 80877103 // 1234.5679 in hex (0x04D2162F)
 	// ProtocolVersion3 is the PostgreSQL 3.0 protocol version number
 	ProtocolVersion3 = 196608 // 3.0 in hex (0x00030000)
+	// MaxDatabaseIdentifierLen is the maximum identifier length in PostgreSQL (NAMEDATALEN - 1)
+	MaxDatabaseIdentifierLen = 63
 )
 
 var (
 	ErrPacketTooShort = errors.New("pgwire: packet length is too short")
+	ErrPacketTooLarge = errors.New("pgwire: startup packet exceeds maximum allowed size (10KB)")
 	ErrInvalidPacket  = errors.New("pgwire: malformed startup packet")
 )
+
+var (
+	ErrEmptyDatabaseName         = errors.New("pgwire: database name cannot be empty")
+	ErrDatabaseNameTooLong       = errors.New("pgwire: database name exceeds PostgreSQL 63-byte limit")
+	ErrDatabaseNameContainsNull  = errors.New("pgwire: database name cannot contain null bytes")
+	ErrInvalidDatabaseIdentifier = errors.New("pgwire: invalid characters in database name")
+)
+
+// validIdentifierRe matches standard PostgreSQL unquoted identifier syntax:
+// must start with an ASCII letter or underscore, followed by alphanumeric characters, underscores, or dollar signs.
+var validIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_$]*$`)
+
+// ValidateDatabaseIdentifier ensures a database name adheres to PostgreSQL wire and naming rules:
+// - Must not be empty
+// - Must not exceed 63 bytes (NAMEDATALEN - 1)
+// - Must not contain null bytes (\x00) which would truncate or corrupt packet framing
+// - Must match standard PostgreSQL unquoted identifier pattern (^[a-zA-Z_][a-zA-Z0-9_$]*$)
+func ValidateDatabaseIdentifier(name string) error {
+	if name == "" {
+		return ErrEmptyDatabaseName
+	}
+	if len(name) > MaxDatabaseIdentifierLen {
+		return fmt.Errorf("%w: %d bytes (maximum allowed is %d)", ErrDatabaseNameTooLong, len(name), MaxDatabaseIdentifierLen)
+	}
+	if strings.ContainsRune(name, '\x00') {
+		return ErrDatabaseNameContainsNull
+	}
+	if !validIdentifierRe.MatchString(name) {
+		return fmt.Errorf("%w: %q", ErrInvalidDatabaseIdentifier, name)
+	}
+	return nil
+}
 
 // StartupMessage represents a parsed PostgreSQL startup message
 type StartupMessage struct {
@@ -44,8 +81,11 @@ func ReadStartupPacket(r io.Reader) ([]byte, error) {
 	}
 
 	pktLen := binary.BigEndian.Uint32(lenBuf[:])
-	if pktLen < 8 || pktLen > 10240 { // Sanity check: max 10KB startup packet
+	if pktLen < 8 {
 		return nil, ErrPacketTooShort
+	}
+	if pktLen > 10240 { // Sanity check: max 10KB startup packet
+		return nil, ErrPacketTooLarge
 	}
 
 	payload := make([]byte, pktLen)
@@ -92,6 +132,10 @@ func ParseStartupMessage(packet []byte) (*StartupMessage, error) {
 
 // RewriteDatabase modifies the 'database' parameter in the packet and re-encodes it with correct length
 func RewriteDatabase(packet []byte, newDatabase string) ([]byte, error) {
+	if err := ValidateDatabaseIdentifier(newDatabase); err != nil {
+		return nil, fmt.Errorf("invalid target database: %w", err)
+	}
+
 	msg, err := ParseStartupMessage(packet)
 	if err != nil {
 		return nil, err
