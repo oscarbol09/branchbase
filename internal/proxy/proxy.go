@@ -14,16 +14,18 @@ import (
 	"github.com/branchbase/branchbase/internal/proxy/pgwire"
 )
 
-// Server represents the transparent TCP proxy
+// Server represents the transparent TCP proxy.
 type Server struct {
-	cfg      *config.Config
-	repoPath string
-	listener net.Listener
-	quit     chan struct{}
-	wg       sync.WaitGroup
+	cfg        *config.Config
+	repoPath   string
+	listener   net.Listener
+	listenerMu sync.Mutex
+	quit       chan struct{}
+	wg         sync.WaitGroup
+	stopOnce   sync.Once
 }
 
-// NewServer initializes a new transparent proxy server
+// NewServer initializes a new transparent proxy server.
 func NewServer(cfg *config.Config, repoPath string) *Server {
 	return &Server{
 		cfg:      cfg,
@@ -32,29 +34,45 @@ func NewServer(cfg *config.Config, repoPath string) *Server {
 	}
 }
 
-// Start begins listening for incoming application database connections
+// Start begins listening for incoming application database connections.
 func (s *Server) Start(ctx context.Context) error {
 	addr := net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", s.cfg.Proxy.ListenPort))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to bind proxy to %s: %w", addr, err)
 	}
-	s.listener = listener
+
+	s.listenerMu.Lock()
+	select {
+	case <-s.quit:
+		s.listenerMu.Unlock()
+		_ = listener.Close()
+		return fmt.Errorf("proxy server already stopped")
+	default:
+		s.listener = listener
+		s.wg.Add(1)
+		go s.acceptLoop(listener)
+	}
+	s.listenerMu.Unlock()
 
 	log.Printf("[BranchBase Proxy] 🚀 Listening on %s -> Forwarding to backend %s:%d",
 		addr, s.cfg.Connection.Host, s.cfg.Connection.Port)
 
-	s.wg.Add(1)
-	go s.acceptLoop()
-
 	return nil
 }
 
-func (s *Server) acceptLoop() {
+// Listener returns the active net.Listener, or nil if the server is not listening.
+func (s *Server) Listener() net.Listener {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	return s.listener
+}
+
+func (s *Server) acceptLoop(listener net.Listener) {
 	defer s.wg.Done()
 
 	for {
-		clientConn, err := s.listener.Accept()
+		clientConn, err := listener.Accept()
 		if err != nil {
 			select {
 			case <-s.quit:
@@ -65,11 +83,20 @@ func (s *Server) acceptLoop() {
 			}
 		}
 
-		s.wg.Add(1)
-		go func(c net.Conn) {
-			defer s.wg.Done()
-			s.handleConnection(c)
-		}(clientConn)
+		s.listenerMu.Lock()
+		select {
+		case <-s.quit:
+			s.listenerMu.Unlock()
+			_ = clientConn.Close()
+			return
+		default:
+			s.wg.Add(1)
+			go func(c net.Conn) {
+				defer s.wg.Done()
+				s.handleConnection(c)
+			}(clientConn)
+		}
+		s.listenerMu.Unlock()
 	}
 }
 
@@ -131,7 +158,9 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// 4. Bidirectional streaming (zero-overhead pipe)
+	// 4. Bidirectional streaming. When either direction finishes, close both
+	// sockets so the other io.Copy unblocks, then drain both goroutines before
+	// returning (avoids leaking a blocked copy + FD under half-close).
 	errChan := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(backendConn, clientConn)
@@ -143,14 +172,25 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}()
 
 	<-errChan
+	_ = clientConn.Close()
+	_ = backendConn.Close()
+	<-errChan
 }
 
-// Stop gracefully shuts down the proxy server
+// Stop gracefully shuts down the proxy server.
+// It is safe to call Stop more than once, including concurrently.
 func (s *Server) Stop() error {
-	close(s.quit)
-	if s.listener != nil {
-		_ = s.listener.Close()
-	}
+	s.stopOnce.Do(func() {
+		s.listenerMu.Lock()
+		close(s.quit)
+		l := s.listener
+		s.listener = nil
+		s.listenerMu.Unlock()
+
+		if l != nil {
+			_ = l.Close()
+		}
+	})
 	s.wg.Wait()
 	log.Println("[BranchBase Proxy] Stopped.")
 	return nil
