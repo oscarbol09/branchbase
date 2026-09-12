@@ -90,16 +90,23 @@ func UninstallHooks(repoPath string) error {
 
 		startIdx := strings.Index(content, hookMarkerStart)
 		endIdx := strings.Index(content, hookMarkerEnd)
-		if startIdx != -1 && endIdx != -1 {
-			endIdx += len(hookMarkerEnd)
-			cleaned := content[:startIdx] + content[endIdx:]
-			cleaned = strings.TrimSpace(cleaned)
+		if startIdx == -1 || endIdx == -1 {
+			continue
+		}
+		if startIdx > endIdx {
+			return fmt.Errorf("corrupted branchbase hook markers in %s: end marker appears before start; fix or remove the file manually", hookFile)
+		}
+		endIdx += len(hookMarkerEnd)
+		if endIdx > len(content) {
+			return fmt.Errorf("corrupted branchbase hook markers in %s", hookFile)
+		}
+		cleaned := content[:startIdx] + content[endIdx:]
+		cleaned = strings.TrimSpace(cleaned)
 
-			if cleaned == "#!/bin/sh" || cleaned == "" {
-				_ = os.Remove(hookFile)
-			} else {
-				_ = os.WriteFile(hookFile, []byte(cleaned+"\n"), 0755)
-			}
+		if cleaned == "#!/bin/sh" || cleaned == "" {
+			_ = os.Remove(hookFile)
+		} else {
+			_ = os.WriteFile(hookFile, []byte(cleaned+"\n"), 0755)
 		}
 	}
 
