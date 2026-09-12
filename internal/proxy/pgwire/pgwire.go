@@ -17,6 +17,7 @@ const (
 
 var (
 	ErrPacketTooShort = errors.New("pgwire: packet length is too short")
+	ErrPacketTooLarge = errors.New("pgwire: startup packet exceeds maximum allowed size (10KB)")
 	ErrInvalidPacket  = errors.New("pgwire: malformed startup packet")
 )
 
@@ -44,8 +45,11 @@ func ReadStartupPacket(r io.Reader) ([]byte, error) {
 	}
 
 	pktLen := binary.BigEndian.Uint32(lenBuf[:])
-	if pktLen < 8 || pktLen > 10240 { // Sanity check: max 10KB startup packet
+	if pktLen < 8 {
 		return nil, ErrPacketTooShort
+	}
+	if pktLen > 10240 { // Sanity check: max 10KB startup packet
+		return nil, ErrPacketTooLarge
 	}
 
 	payload := make([]byte, pktLen)

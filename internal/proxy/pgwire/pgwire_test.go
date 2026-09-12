@@ -100,8 +100,20 @@ func TestReadStartupPacketBounds(t *testing.T) {
 	var tooLarge [4]byte
 	binary.BigEndian.PutUint32(tooLarge[:], 20000)
 	_, err = ReadStartupPacket(bytes.NewReader(tooLarge[:]))
-	if err != ErrPacketTooShort {
-		t.Errorf("expected ErrPacketTooShort for length 20000, got: %v", err)
+	if err != ErrPacketTooLarge {
+		t.Errorf("expected ErrPacketTooLarge for length 20000, got: %v", err)
+	}
+
+	// Valid small packet (length 8: header + protocol version)
+	valid := make([]byte, 8)
+	binary.BigEndian.PutUint32(valid[0:4], 8)
+	binary.BigEndian.PutUint32(valid[4:8], ProtocolVersion3)
+	got, err := ReadStartupPacket(bytes.NewReader(valid))
+	if err != nil {
+		t.Errorf("expected success for valid 8-byte packet, got: %v", err)
+	}
+	if !bytes.Equal(got, valid) {
+		t.Errorf("expected packet %v, got %v", valid, got)
 	}
 }
 
