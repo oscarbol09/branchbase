@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Native Go fuzz testing (`testing.F`) for `pgwire.ParseStartupMessage` and `git.SanitizeBranchName`.
+- Automated vulnerability scanning in CI via `govulncheck`.
+- Concurrency cancellation (`cancel-in-progress`) and 10-minute job timeouts in CI/CD pipeline.
+- Race detector (`-race`) execution on Unix runners in CI matrix.
+- Proxy server lifecycle and graceful shutdown tests (`internal/proxy/proxy_test.go`).
+- Database driver safety guard tests preventing deletion of protected base databases.
+- Comprehensive negative and boundary tests for Git HEAD resolver, worktrees, and detached states.
 - `--json` output flag for `branchbase status` providing structured JSON output for scripts and devtools (#17).
 - Bidirectional socket cleanup and channel draining in proxy `handleConnection`, eliminating goroutine and file descriptor leaks on half-close (#18).
 - Defensive bounds checks and error reporting for inverted or corrupted hook markers in `UninstallHooks` (#15).
