@@ -145,6 +145,80 @@ func TestRewriteDatabase(t *testing.T) {
 	}
 }
 
+func TestBuildErrorResponse(t *testing.T) {
+	t.Parallel()
+
+	const (
+		severity = "FATAL"
+		code     = "08001"
+		message  = "BranchBase: unable to connect to backend PostgreSQL at 127.0.0.1:5433: connection refused"
+	)
+
+	pkt := BuildErrorResponse(severity, code, message)
+	if len(pkt) < 6 {
+		t.Fatalf("packet too short: %d bytes", len(pkt))
+	}
+	if pkt[0] != 'E' {
+		t.Errorf("expected message type 'E', got %q", pkt[0])
+	}
+
+	length := binary.BigEndian.Uint32(pkt[1:5])
+	if int(length) != len(pkt)-1 {
+		t.Errorf("length field %d does not match remaining bytes %d", length, len(pkt)-1)
+	}
+	if pkt[len(pkt)-1] != 0 {
+		t.Error("expected terminating null byte after error fields")
+	}
+
+	fields := parseErrorFields(t, pkt[5:len(pkt)-1])
+	if fields['S'] != severity {
+		t.Errorf("Severity (S) = %q, want %q", fields['S'], severity)
+	}
+	if fields['C'] != code {
+		t.Errorf("Code (C) = %q, want %q", fields['C'], code)
+	}
+	if fields['M'] != message {
+		t.Errorf("Message (M) = %q, want %q", fields['M'], message)
+	}
+}
+
+func TestBuildErrorResponseEmptyFields(t *testing.T) {
+	t.Parallel()
+
+	pkt := BuildErrorResponse("", "", "")
+	if pkt[0] != 'E' {
+		t.Errorf("expected message type 'E', got %q", pkt[0])
+	}
+	length := binary.BigEndian.Uint32(pkt[1:5])
+	if int(length) != len(pkt)-1 {
+		t.Errorf("length field %d does not match remaining bytes %d", length, len(pkt)-1)
+	}
+	if pkt[len(pkt)-1] != 0 {
+		t.Error("expected terminating null byte after error fields")
+	}
+
+	fields := parseErrorFields(t, pkt[5:len(pkt)-1])
+	if fields['S'] != "" || fields['C'] != "" || fields['M'] != "" {
+		t.Errorf("expected empty S/C/M fields, got %#v", fields)
+	}
+}
+
+func parseErrorFields(t *testing.T, body []byte) map[byte]string {
+	t.Helper()
+	fields := make(map[byte]string)
+	for len(body) > 0 {
+		typ := body[0]
+		body = body[1:]
+		i := bytes.IndexByte(body, 0)
+		if i < 0 {
+			t.Fatal("unterminated error field")
+		}
+		fields[typ] = string(body[:i])
+		body = body[i+1:]
+	}
+	return fields
+}
+
 func FuzzParseStartupMessage(f *testing.F) {
 	// Seed valid packets
 	f.Add(buildMockStartupPacket("postgres", "myapp_dev"))
