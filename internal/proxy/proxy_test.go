@@ -1,8 +1,9 @@
-﻿package proxy
+package proxy
 
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,5 +59,61 @@ func TestServerStopUnstarted(t *testing.T) {
 	// Stopping an unstarted server should not panic
 	if err := srv.Stop(); err != nil {
 		t.Fatalf("Stop on unstarted server returned error: %v", err)
+	}
+}
+
+func TestServerStopIdempotent(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = 59999
+
+	srv := NewServer(&cfg, t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+
+	if err := srv.Stop(); err != nil {
+		t.Fatalf("first Stop returned error: %v", err)
+	}
+	if err := srv.Stop(); err != nil {
+		t.Fatalf("second Stop returned error: %v", err)
+	}
+}
+
+func TestServerStopConcurrent(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = 59999
+
+	srv := NewServer(&cfg, t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			errCh <- srv.Stop()
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent Stop returned error: %v", err)
+		}
 	}
 }
