@@ -24,11 +24,10 @@ func TestServerLifecycle(t *testing.T) {
 		t.Fatalf("Server.Start failed: %v", err)
 	}
 
-	if srv.listener == nil {
+	addr := listenerAddr(srv)
+	if addr == "" {
 		t.Fatal("expected srv.listener to be non-nil after Start")
 	}
-
-	addr := srv.listener.Addr().String()
 
 	// Dial proxy to trigger acceptLoop
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
@@ -116,4 +115,85 @@ func TestServerStopConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Stop returned error: %v", err)
 		}
 	}
+}
+
+func TestServerStartStopRace(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = 59999
+
+	const n = 50
+	for i := 0; i < n; i++ {
+		srv := NewServer(&cfg, t.TempDir())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = srv.Start(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = srv.Stop()
+		}()
+		wg.Wait()
+		cancel()
+		if err := srv.Stop(); err != nil {
+			t.Fatalf("iteration %d: final Stop: %v", i, err)
+		}
+	}
+}
+
+func TestServerAcceptLoopStopRace(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = 59999
+
+	srv := NewServer(&cfg, t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+
+	addr := listenerAddr(srv)
+	if addr == "" {
+		t.Fatal("expected listen addr after Start")
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	wg.Add(n + 1)
+	go func() {
+		defer wg.Done()
+		_ = srv.Stop()
+	}()
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+			if err == nil {
+				_ = conn.Close()
+			}
+			_ = listenerAddr(srv)
+		}()
+	}
+	wg.Wait()
+
+	if err := srv.Stop(); err != nil {
+		t.Fatalf("final Stop: %v", err)
+	}
+}
+
+func listenerAddr(s *Server) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener == nil {
+		return ""
+	}
+	return s.listener.Addr().String()
 }

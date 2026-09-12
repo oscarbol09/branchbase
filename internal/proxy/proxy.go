@@ -18,6 +18,7 @@ import (
 type Server struct {
 	cfg      *config.Config
 	repoPath string
+	mu       sync.Mutex
 	listener net.Listener
 	quit     chan struct{}
 	wg       sync.WaitGroup
@@ -40,12 +41,22 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to bind proxy to %s: %w", addr, err)
 	}
+
+	s.mu.Lock()
+	select {
+	case <-s.quit:
+		s.mu.Unlock()
+		_ = listener.Close()
+		return fmt.Errorf("proxy already stopped")
+	default:
+	}
 	s.listener = listener
+	s.wg.Add(1)
+	s.mu.Unlock()
 
 	log.Printf("[BranchBase Proxy] 🚀 Listening on %s -> Forwarding to backend %s:%d",
 		addr, s.cfg.Connection.Host, s.cfg.Connection.Port)
 
-	s.wg.Add(1)
 	go s.acceptLoop()
 
 	return nil
@@ -54,8 +65,15 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) acceptLoop() {
 	defer s.wg.Done()
 
+	s.mu.Lock()
+	ln := s.listener
+	s.mu.Unlock()
+	if ln == nil {
+		return
+	}
+
 	for {
-		clientConn, err := s.listener.Accept()
+		clientConn, err := ln.Accept()
 		if err != nil {
 			select {
 			case <-s.quit:
@@ -155,9 +173,13 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 // It is safe to call Stop more than once, including concurrently.
 func (s *Server) Stop() error {
 	s.stopOnce.Do(func() {
+		s.mu.Lock()
 		close(s.quit)
-		if s.listener != nil {
-			_ = s.listener.Close()
+		ln := s.listener
+		s.listener = nil
+		s.mu.Unlock()
+		if ln != nil {
+			_ = ln.Close()
 		}
 	})
 	s.wg.Wait()
