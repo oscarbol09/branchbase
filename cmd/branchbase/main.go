@@ -168,7 +168,6 @@ func buildStatus(cwd string) (statusOutput, error) {
 	if err != nil {
 		cfg = nil
 	}
-
 	dbName := statusDatabaseName(cfg, sanitized)
 	hooksInstalled := hook.AreHooksInstalled(cwd)
 
