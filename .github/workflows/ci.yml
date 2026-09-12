@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Golangci-Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout Code
         uses: actions/checkout@v7
@@ -26,9 +31,30 @@ jobs:
           version: latest
           args: --timeout=5m
 
+  security:
+    name: Security Audit (govulncheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: '1.22'
+          go-package: ./...
+
   test:
     name: Test & Build (${{ matrix.os }} - Go ${{ matrix.go-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -51,7 +77,12 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Run Unit Tests
+      - name: Run Tests with Race Detector (Unix)
+        if: runner.os != 'Windows'
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Run Tests (Windows)
+        if: runner.os == 'Windows'
         run: go test -v ./...
 
       - name: Build CLI Binary
