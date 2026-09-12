@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -67,7 +68,13 @@ func main() {
 		runInit(cwd)
 
 	case "status":
-		runStatus(cwd)
+		jsonOutput := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--json" {
+				jsonOutput = true
+			}
+		}
+		runStatus(cwd, jsonOutput)
 
 	case "proxy":
 		runProxy(cwd)
@@ -128,34 +135,88 @@ func runInit(cwd string) {
 	fmt.Println("👉 Run 'branchbase proxy' to start routing application queries!")
 }
 
-func runStatus(cwd string) {
+// statusOutput is the JSON shape for `branchbase status --json`.
+type statusOutput struct {
+	Branch         string `json:"branch"`
+	Sanitized      string `json:"sanitized"`
+	Database       string `json:"database"`
+	Driver         string `json:"driver"`
+	ProxyPort      int    `json:"proxy_port"`
+	Backend        string `json:"backend"`
+	HooksInstalled bool   `json:"hooks_installed"`
+}
+
+// statusDatabaseName resolves the branch database name for status output.
+// A nil cfg (including a LoadConfig (nil, nil) edge case) falls back safely.
+func statusDatabaseName(cfg *config.Config, sanitized string) string {
+	if cfg == nil {
+		return "myapp_dev_" + sanitized
+	}
+	return cfg.DatabaseNameForBranch(sanitized)
+}
+
+// buildStatus gathers status fields with graceful defaults when config is missing.
+func buildStatus(cwd string) (statusOutput, error) {
 	branch, err := git.ResolveCurrentBranch(cwd)
+	branchErr := err
 	if err != nil {
-		fmt.Printf("⚠️  Could not resolve Git branch: %v\n", err)
 		branch = "unknown"
 	}
 
 	sanitized := git.SanitizeBranchName(branch)
 	cfg, err := config.LoadConfig(cwd)
-	var dbName string
-	if err == nil {
-		dbName = cfg.DatabaseNameForBranch(sanitized)
-	} else {
-		dbName = "myapp_dev_" + sanitized
+	if err != nil {
+		cfg = nil
 	}
 
+	dbName := statusDatabaseName(cfg, sanitized)
 	hooksInstalled := hook.AreHooksInstalled(cwd)
 
-	fmt.Println("🌿 BranchBase Status")
-	fmt.Printf("  • Active Git Branch: %s\n", branch)
-	fmt.Printf("  • Sanitized Name:    %s\n", sanitized)
-	fmt.Printf("  • Target Database:   %s\n", dbName)
-	if cfg != nil {
-		fmt.Printf("  • Driver:            %s\n", cfg.Driver)
-		fmt.Printf("  • Proxy Port:        %d -> Backend: %s:%d\n",
-			cfg.Proxy.ListenPort, cfg.Connection.Host, cfg.Connection.Port)
+	src := cfg
+	if src == nil {
+		defaults := config.DefaultConfig()
+		src = &defaults
 	}
-	if hooksInstalled {
+	driver := src.Driver
+	proxyPort := src.Proxy.ListenPort
+	backend := fmt.Sprintf("%s:%d", src.Connection.Host, src.Connection.Port)
+
+	out := statusOutput{
+		Branch:         branch,
+		Sanitized:      sanitized,
+		Database:       dbName,
+		Driver:         driver,
+		ProxyPort:      proxyPort,
+		Backend:        backend,
+		HooksInstalled: hooksInstalled,
+	}
+	return out, branchErr
+}
+
+func runStatus(cwd string, jsonOutput bool) {
+	info, branchErr := buildStatus(cwd)
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(info); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to encode status JSON: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if branchErr != nil {
+		fmt.Printf("⚠️  Could not resolve Git branch: %v\n", branchErr)
+	}
+
+	fmt.Println("🌿 BranchBase Status")
+	fmt.Printf("  • Active Git Branch: %s\n", info.Branch)
+	fmt.Printf("  • Sanitized Name:    %s\n", info.Sanitized)
+	fmt.Printf("  • Target Database:   %s\n", info.Database)
+	fmt.Printf("  • Driver:            %s\n", info.Driver)
+	fmt.Printf("  • Proxy Port:        %d -> Backend: %s\n", info.ProxyPort, info.Backend)
+	if info.HooksInstalled {
 		fmt.Println("  • Git Hooks:         ✅ Active (.git/hooks/post-checkout)")
 	} else {
 		fmt.Println("  • Git Hooks:         ⚪ Not installed (run 'branchbase hooks install')")
@@ -205,7 +266,7 @@ func runProxy(cwd string) {
 
 func runList(cwd string) {
 	fmt.Println("📋 BranchBase Managed Databases:")
-	runStatus(cwd)
+	runStatus(cwd, false)
 }
 
 func runPrune(cwd string) {
