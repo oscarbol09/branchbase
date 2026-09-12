@@ -21,6 +21,7 @@ type Server struct {
 	listener net.Listener
 	quit     chan struct{}
 	wg       sync.WaitGroup
+	stopOnce sync.Once
 }
 
 // NewServer initializes a new transparent proxy server
@@ -150,12 +151,15 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	<-errChan
 }
 
-// Stop gracefully shuts down the proxy server
+// Stop gracefully shuts down the proxy server.
+// It is safe to call Stop more than once, including concurrently.
 func (s *Server) Stop() error {
-	close(s.quit)
-	if s.listener != nil {
-		_ = s.listener.Close()
-	}
+	s.stopOnce.Do(func() {
+		close(s.quit)
+		if s.listener != nil {
+			_ = s.listener.Close()
+		}
+	})
 	s.wg.Wait()
 	log.Println("[BranchBase Proxy] Stopped.")
 	return nil
