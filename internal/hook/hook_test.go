@@ -8,13 +8,8 @@ import (
 )
 
 func TestInstallAndUninstallHooks(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "branchbase_hook_test")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tempDir)
-	}()
+	t.Parallel()
+	tempDir := t.TempDir()
 
 	gitDir := filepath.Join(tempDir, ".git")
 	if err := os.Mkdir(gitDir, 0755); err != nil {
@@ -45,12 +40,28 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 	}
 }
 
-func TestUninstallHooksCorruptedMarkers(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "branchbase_hook_corrupt")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+func TestInstallHooksNotGitRepo(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	err := InstallHooks(tempDir)
+	if err != ErrNotGitRepository {
+		t.Fatalf("expected ErrNotGitRepository, got: %v", err)
 	}
-	defer func() { _ = os.RemoveAll(tempDir) }()
+}
+
+func TestAreHooksInstalledFalseWhenMissing(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	if AreHooksInstalled(tempDir) {
+		t.Errorf("expected AreHooksInstalled to return false for empty dir")
+	}
+}
+
+func TestUninstallHooksCorruptedMarkers(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
 
 	hooksDir := filepath.Join(tempDir, ".git", "hooks")
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
@@ -64,7 +75,7 @@ func TestUninstallHooksCorruptedMarkers(t *testing.T) {
 		t.Fatalf("write hook: %v", err)
 	}
 
-	err = UninstallHooks(tempDir)
+	err := UninstallHooks(tempDir)
 	if err == nil {
 		t.Fatalf("expected error for corrupted markers, got nil")
 	}
