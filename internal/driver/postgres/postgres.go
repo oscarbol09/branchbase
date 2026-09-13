@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/branchbase/branchbase/internal/driver"
 )
@@ -18,6 +21,44 @@ type Config struct {
 	Password     string
 	BaseDatabase string
 	SSLMode      string
+}
+
+// DSN returns the PostgreSQL connection URL string for the pgx driver
+func (c Config) DSN() string {
+	host := c.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := c.Port
+	if port <= 0 {
+		port = 5432
+	}
+	dbName := c.BaseDatabase
+	if dbName == "" {
+		dbName = "postgres"
+	}
+	sslMode := c.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+
+	u := &url.URL{
+		Scheme: "postgres",
+		Host:   fmt.Sprintf("%s:%d", host, port),
+		Path:   dbName,
+	}
+	if c.User != "" {
+		if c.Password != "" {
+			u.User = url.UserPassword(c.User, c.Password)
+		} else {
+			u.User = url.User(c.User)
+		}
+	}
+	q := u.Query()
+	q.Set("sslmode", sslMode)
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }
 
 // PostgresDriver manages database branching for PostgreSQL engines
@@ -51,17 +92,49 @@ func init() {
 		if base, ok := params["base_database"].(string); ok && base != "" {
 			cfg.BaseDatabase = base
 		}
+		if ssl, ok := params["sslmode"].(string); ok && ssl != "" {
+			cfg.SSLMode = ssl
+		}
 
 		return New(cfg)
 	})
 }
 
-// New creates a new PostgresDriver instance
+// New creates a new PostgresDriver instance and initializes the connection pool
 func New(cfg Config) (*PostgresDriver, error) {
 	if cfg.SSLMode == "" {
 		cfg.SSLMode = "disable"
 	}
-	return &PostgresDriver{cfg: cfg}, nil
+
+	db, err := sql.Open("pgx", cfg.DSN())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	return &PostgresDriver{
+		cfg: cfg,
+		db:  db,
+	}, nil
+}
+
+// NewWithDB creates a PostgresDriver with an existing database handle (useful for unit tests and custom pools)
+func NewWithDB(cfg Config, db *sql.DB) *PostgresDriver {
+	if cfg.SSLMode == "" {
+		cfg.SSLMode = "disable"
+	}
+	return &PostgresDriver{
+		cfg: cfg,
+		db:  db,
+	}
+}
+
+// DB returns the underlying *sql.DB connection pool
+func (d *PostgresDriver) DB() *sql.DB {
+	return d.db
 }
 
 func (d *PostgresDriver) Name() string {
@@ -76,6 +149,9 @@ func (d *PostgresDriver) Ping(ctx context.Context) error {
 }
 
 func (d *PostgresDriver) BranchExists(ctx context.Context, branchName string) (bool, error) {
+	if d.db == nil {
+		return false, fmt.Errorf("postgres connection not initialized")
+	}
 	dbName := d.formatDBName(branchName)
 	query := "SELECT 1 FROM pg_database WHERE datname = $1"
 
@@ -92,6 +168,9 @@ func (d *PostgresDriver) BranchExists(ctx context.Context, branchName string) (b
 
 // CreateBranch clones sourceBranch into targetBranch using PostgreSQL's TEMPLATE feature
 func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error {
+	if d.db == nil {
+		return fmt.Errorf("postgres connection not initialized")
+	}
 	sourceDB := d.formatDBName(sourceBranch)
 	targetDB := d.formatDBName(targetBranch)
 
@@ -115,6 +194,9 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 
 // DeleteBranch drops the specified branch database
 func (d *PostgresDriver) DeleteBranch(ctx context.Context, branchName string) error {
+	if d.db == nil {
+		return fmt.Errorf("postgres connection not initialized")
+	}
 	dbName := d.formatDBName(branchName)
 
 	if dbName == d.cfg.BaseDatabase {
@@ -136,6 +218,9 @@ func (d *PostgresDriver) DeleteBranch(ctx context.Context, branchName string) er
 
 // ListBranches returns all databases that start with the base_database prefix
 func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("postgres connection not initialized")
+	}
 	prefix := d.cfg.BaseDatabase + "%"
 	query := `
 		SELECT datname, pg_database_size(datname)
@@ -173,8 +258,19 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 			IsProtected: datname == d.cfg.BaseDatabase,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return branches, nil
+}
+
+// Close terminates the database connection pool
+func (d *PostgresDriver) Close() error {
+	if d.db == nil {
+		return nil
+	}
+	return d.db.Close()
 }
 
 func (d *PostgresDriver) formatDBName(branch string) string {

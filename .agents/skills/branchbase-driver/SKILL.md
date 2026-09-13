@@ -23,6 +23,7 @@ type Driver interface {
     CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error
     DeleteBranch(ctx context.Context, branchName string) error
     ListBranches(ctx context.Context) ([]BranchInfo, error)
+    Close() error
 }
 ```
 

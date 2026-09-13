@@ -36,6 +36,9 @@ type Driver interface {
 
 	// ListBranches returns all databases currently managed by BranchBase
 	ListBranches(ctx context.Context) ([]BranchInfo, error)
+
+	// Close closes any underlying connections or resources managed by the driver
+	Close() error
 }
 
 var (

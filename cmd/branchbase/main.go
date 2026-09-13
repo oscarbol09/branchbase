@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/branchbase/branchbase/internal/config"
+	_ "github.com/branchbase/branchbase/internal/driver/postgres"
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/hook"
 	"github.com/branchbase/branchbase/internal/proxy"
