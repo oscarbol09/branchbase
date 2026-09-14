@@ -1,9 +1,13 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -368,3 +372,100 @@ func listenerAddr(s *Server) string {
 	}
 	return s.listener.Addr().String()
 }
+
+func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
+	// 1. Set up a mock backend listener
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create mock backend listener: %v", err)
+	}
+	defer backendListener.Close()
+
+	backendPort := backendListener.Addr().(*net.TCPAddr).Port
+
+	// Channel to capture whatever payload the backend receives
+	receivedOnBackend := make(chan []byte, 1)
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 1024)
+		n, _ := conn.Read(buf)
+		if n > 0 {
+			receivedOnBackend <- buf[:n]
+		} else {
+			receivedOnBackend <- []byte{}
+		}
+	}()
+
+	// 2. Set up proxy with targetDB that exceeds 63 bytes (Postgres NAMEDATALEN limit)
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = backendPort
+	// BaseDatabase with 60 characters so that BaseDatabase + "_" + branch exceeds 63 bytes
+	cfg.Connection.BaseDatabase = "a_very_long_base_database_name_that_leaves_no_room_for_branches"
+
+	// Create a temp repository with active branch "feature_xyz"
+	tempDir := t.TempDir()
+	gitDir := filepath.Join(tempDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("failed to create fake .git: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature_xyz\n"), 0644); err != nil {
+		t.Fatalf("failed to write fake HEAD: %v", err)
+	}
+
+	srv := NewServer(&cfg, tempDir, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	addr := listenerAddr(srv)
+
+	// 3. Connect client to proxy and send valid startup packet requesting "myapp_dev"
+	clientConn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("failed to dial proxy: %v", err)
+	}
+	defer clientConn.Close()
+
+	var buf bytes.Buffer
+	buf.Write([]byte{0, 0, 0, 0}) // placeholder
+	var proto [4]byte
+	binary.BigEndian.PutUint32(proto[:], 196608) // ProtocolVersion3
+	buf.Write(proto[:])
+	buf.WriteString("user")
+	buf.WriteByte(0)
+	buf.WriteString("postgres")
+	buf.WriteByte(0)
+	buf.WriteString("database")
+	buf.WriteByte(0)
+	buf.WriteString("myapp_dev")
+	buf.WriteByte(0)
+	buf.WriteByte(0)
+	data := buf.Bytes()
+	binary.BigEndian.PutUint32(data[0:4], uint32(len(data)))
+
+	if _, err := clientConn.Write(data); err != nil {
+		t.Fatalf("failed to send startup packet: %v", err)
+	}
+
+	// 4. Verify backend receives NO payload. The proxy MUST abort and fail-closed!
+	select {
+	case payload := <-receivedOnBackend:
+		if len(payload) > 0 {
+			t.Fatalf("SECURITY VIOLATION: proxy forwarded %d bytes to backend despite RewriteDatabase error! Raw packet was forwarded.", len(payload))
+		}
+	case <-time.After(500 * time.Millisecond):
+		// Mock backend read timed out with 0 bytes, which is also valid fail-closed behavior
+	}
+}
+

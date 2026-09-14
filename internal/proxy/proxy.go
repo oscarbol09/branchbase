@@ -192,11 +192,15 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		}
 	}
 
-	// Rewrite target database to the branch-specific database
+	// Rewrite target database to the branch-specific database.
+	// Invariant: fail-closed. If rewriting fails (e.g., invalid database identifier,
+	// length exceeding 63 bytes, or malformed startup packet), abort immediately.
+	// NEVER forward the raw un-rewritten packet, as that would route queries to the
+	// client's default/base database (silent data corruption risk).
 	rewrittenPacket, err := pgwire.RewriteDatabase(packet, targetDB)
 	if err != nil {
-		log.Printf("[BranchBase Proxy] Warning: could not rewrite database, forwarding raw: %v", err)
-		rewrittenPacket = packet
+		log.Printf("[BranchBase Proxy] ❌ Failed to rewrite database to %q: %v. Aborting connection.", targetDB, err)
+		return
 	}
 
 	if _, err := backendConn.Write(rewrittenPacket); err != nil {
