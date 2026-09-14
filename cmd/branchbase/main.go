@@ -251,16 +251,17 @@ func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
 	params["port"] = cfg.Connection.Port
 	params["user"] = cfg.Connection.User
 	params["password"] = cfg.Connection.Password
-	params["base_database"] = cfg.Database.BaseDatabase
-	params["sslmode"] = cfg.Connection.SSLMode
+	params["base_database"] = cfg.Connection.BaseDatabase
+	params["sslmode"] = "disable"
 
 	// For SQLite
-	params["path"] = cfg.Database.BaseDatabase
-	if cfg.Database.BaseDatabase != "" {
-		params["base_database"] = cfg.Database.BaseDatabase
+	if cfg.Connection.Path != "" {
+		params["path"] = cfg.Connection.Path
+	} else if cfg.Connection.BaseDatabase != "" {
+		params["path"] = cfg.Connection.BaseDatabase
 	}
 
-	drvName := cfg.Connection.Driver
+	drvName := cfg.Driver
 	if drvName == "" {
 		drvName = "postgres"
 	}
@@ -278,7 +279,7 @@ func runProxy(cwd string) {
 
 	drv, err := getDriverForConfig(cfg)
 	if err != nil {
-		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Connection.Driver, err)
+		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Driver, err)
 	} else {
 		defer drv.Close()
 	}
