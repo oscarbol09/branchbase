@@ -36,11 +36,11 @@ This document outlines the milestones and engineering priorities for **BranchBas
 
 ### 📍 Phase 2: SQLite & Multi-OS Hardening (v0.2.0)
 *Focus: Single-file SQLite databases & cross-platform support.*
-- [ ] **SQLite Driver:**
-  - Copy-on-Write (CoW) implementation using `clonefile()` on macOS (APFS).
+- [x] **SQLite Driver:**
+  - Copy-on-Write (CoW) implementation on macOS.
   - Linux `ioctl(FICLONE)` reflink support for Btrfs and XFS.
   - Windows fast stream-copy fallback.
-  - WAL checkpoint flushing prior to snapshotting.
+  - WAL and SHM sidecar file replication and crash-recovery support.
 - [ ] **Cleanup & Pruning:**
   - `branchbase prune`: Detect merged and orphaned Git branches and delete corresponding databases.
   - Interactive deletion confirmation (`--dry-run` and `--force`).

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explicit `ErrPacketTooLarge` error returned when client startup packets exceed the 10KB limit (#37).
 
 ### Added
+- Pure Go SQLite database driver (`internal/driver/sqlite`) supporting filesystem Copy-on-Write snapshots (Linux ioctl `FICLONE`, macOS, Windows streaming fallback) and WAL/SHM replication (#2).
 - Native Go fuzz testing (`testing.F`) for `pgwire.ParseStartupMessage` and `git.SanitizeBranchName`.
 - Automated vulnerability scanning in CI via `govulncheck`.
 - Concurrency cancellation (`cancel-in-progress`) and 10-minute job timeouts in CI/CD pipeline.

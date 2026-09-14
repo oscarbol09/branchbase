@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/branchbase/branchbase/internal/config"
+	_ "github.com/branchbase/branchbase/internal/driver/postgres"
+	_ "github.com/branchbase/branchbase/internal/driver/sqlite"
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/hook"
 	"github.com/branchbase/branchbase/internal/proxy"
