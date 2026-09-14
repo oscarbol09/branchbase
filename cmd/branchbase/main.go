@@ -117,9 +117,10 @@ func main() {
 		dryRun := false
 		force := false
 		for _, arg := range os.Args[2:] {
-			if arg == "--dry-run" {
+			switch arg {
+			case "--dry-run":
 				dryRun = true
-			} else if arg == "--force" || arg == "-f" || arg == "-y" {
+			case "--force", "-f", "-y":
 				force = true
 			}
 		}
