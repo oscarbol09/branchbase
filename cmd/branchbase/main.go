@@ -513,14 +513,22 @@ func runPrune(cwd string, dryRun, force bool) {
 	activeBranch, _ := git.ResolveCurrentBranch(cwd)
 	sanitizedActive := git.SanitizeBranchName(activeBranch)
 
-	localBranches, _ := git.ResolveLocalBranches(cwd)
+	localBranches, err := git.ResolveLocalBranches(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to resolve local Git branches: %v\n", err)
+		os.Exit(1)
+	}
 	localMap := make(map[string]bool)
 	for _, lb := range localBranches {
 		localMap[lb] = true
 		localMap[git.SanitizeBranchName(lb)] = true
 	}
 
-	mergedBranches, _ := git.ResolveMergedBranches(cwd, defaultBranch)
+	mergedBranches, err := git.ResolveMergedBranches(cwd, defaultBranch)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to resolve merged Git branches: %v\n", err)
+		os.Exit(1)
+	}
 	mergedMap := make(map[string]bool)
 	for _, mb := range mergedBranches {
 		mergedMap[mb] = true

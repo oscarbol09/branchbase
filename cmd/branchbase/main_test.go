@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/branchbase/branchbase/internal/config"
@@ -167,16 +169,118 @@ func TestRunSwitchAndListWithSqlite(t *testing.T) {
 	runList(dir, true)
 }
 
-func TestRunPruneWithSqlite(t *testing.T) {
-	dir := t.TempDir()
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
 
-	// 1. Initialize mock git repo
+	commands := [][]string{
+		{"init", "-b", "main"},
+		{"config", "user.name", "BranchBase Tests"},
+		{"config", "user.email", "branchbase-tests@example.invalid"},
+		{"commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+		}
+	}
+}
+
+func writePruneSQLiteConfig(t *testing.T, dir string) {
+	t.Helper()
+
+	baseDB := filepath.Join(dir, "dev.db")
+	if err := os.WriteFile(baseDB, []byte("base-db-content"), 0644); err != nil {
+		t.Fatalf("write base db: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Proxy.DefaultBranch = "main"
+	if err := cfg.SaveJSON(filepath.Join(dir, ".branchbase.json")); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+}
+
+func runPruneFailureHelper(t *testing.T, dir string) (string, int) {
+	t.Helper()
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunPruneGitResolutionFailureHelper$")
+	cmd.Env = append(os.Environ(),
+		"BRANCHBASE_PRUNE_HELPER=1",
+		"BRANCHBASE_PRUNE_DIR="+dir,
+	)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return string(output), 0
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("run prune helper: %v", err)
+	}
+	return string(output), exitErr.ExitCode()
+}
+
+func TestRunPruneGitResolutionFailureHelper(t *testing.T) {
+	if os.Getenv("BRANCHBASE_PRUNE_HELPER") != "1" {
+		return
+	}
+	runPrune(os.Getenv("BRANCHBASE_PRUNE_DIR"), true, false)
+}
+
+func TestRunPruneFailsWhenLocalBranchesCannotBeResolved(t *testing.T) {
+	dir := t.TempDir()
+	writePruneSQLiteConfig(t, dir)
+
+	output, exitCode := runPruneFailureHelper(t, dir)
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "Failed to resolve local Git branches") {
+		t.Fatalf("missing local branch resolution error:\n%s", output)
+	}
+	if strings.Contains(output, "All branch databases are up to date") {
+		t.Fatalf("prune reported a false success after Git resolution failed:\n%s", output)
+	}
+}
+
+func TestRunPruneFailsWhenMergedBranchesCannotBeResolved(t *testing.T) {
+	dir := t.TempDir()
+	writePruneSQLiteConfig(t, dir)
+
 	gitDir := filepath.Join(dir, ".git")
 	if err := os.MkdirAll(filepath.Join(gitDir, "refs", "heads"), 0755); err != nil {
 		t.Fatalf("mkdir .git: %v", err)
 	}
-	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
-	_ = os.WriteFile(filepath.Join(gitDir, "refs", "heads", "main"), []byte("commit-1\n"), 0644)
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
+		t.Fatalf("write HEAD: %v", err)
+	}
+	// Keep a local main ref discoverable by the filesystem fallback, but make it
+	// invalid so `git branch --merged main` fails deterministically.
+	if err := os.WriteFile(filepath.Join(gitDir, "refs", "heads", "main"), []byte("not-a-commit\n"), 0644); err != nil {
+		t.Fatalf("write main ref: %v", err)
+	}
+
+	output, exitCode := runPruneFailureHelper(t, dir)
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", exitCode, output)
+	}
+	if !strings.Contains(output, "Failed to resolve merged Git branches") {
+		t.Fatalf("missing merged branch resolution error:\n%s", output)
+	}
+	if strings.Contains(output, "All branch databases are up to date") {
+		t.Fatalf("prune reported a false success after Git resolution failed:\n%s", output)
+	}
+}
+
+func TestRunPruneWithSqlite(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. Initialize a real repository so merged-branch resolution is meaningful.
+	initGitRepo(t, dir)
 
 	baseDB := filepath.Join(dir, "dev.db")
 	_ = os.WriteFile(baseDB, []byte("base-db-content"), 0644)
