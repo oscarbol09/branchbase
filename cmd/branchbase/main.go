@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -84,16 +86,44 @@ func main() {
 
 	case "switch":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: branchbase switch <branch-name>")
+			fmt.Println("Usage: branchbase switch <branch-name> [--no-create]")
 			os.Exit(1)
 		}
-		runSwitch(cwd, os.Args[2])
+		noCreate := false
+		targetBranch := ""
+		for _, arg := range os.Args[2:] {
+			if arg == "--no-create" {
+				noCreate = true
+			} else if targetBranch == "" {
+				targetBranch = arg
+			}
+		}
+		if targetBranch == "" {
+			fmt.Println("Usage: branchbase switch <branch-name> [--no-create]")
+			os.Exit(1)
+		}
+		runSwitch(cwd, targetBranch, noCreate)
 
 	case "list":
-		runList(cwd)
+		jsonOutput := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--json" {
+				jsonOutput = true
+			}
+		}
+		runList(cwd, jsonOutput)
 
 	case "prune":
-		runPrune(cwd)
+		dryRun := false
+		force := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--dry-run" {
+				dryRun = true
+			} else if arg == "--force" || arg == "-f" || arg == "-y" {
+				force = true
+			}
+		}
+		runPrune(cwd, dryRun, force)
 
 	case "hooks":
 		subcmd := "status"
@@ -150,7 +180,6 @@ type statusOutput struct {
 }
 
 // statusDatabaseName resolves the branch database name for status output.
-// A nil cfg (including a LoadConfig (nil, nil) edge case) falls back safely.
 func statusDatabaseName(cfg *config.Config, sanitized string) string {
 	if cfg == nil {
 		return "myapp_dev_" + sanitized
@@ -166,28 +195,31 @@ func buildStatus(cwd string) (statusOutput, error) {
 		branch = "unknown"
 	}
 
+	cfg, _ := config.LoadConfig(cwd)
 	sanitized := git.SanitizeBranchName(branch)
-	cfg, err := config.LoadConfig(cwd)
-	if err != nil {
-		cfg = nil
-	}
-	dbName := statusDatabaseName(cfg, sanitized)
-	hooksInstalled := hook.AreHooksInstalled(cwd)
 
-	src := cfg
-	if src == nil {
-		defaults := config.DefaultConfig()
-		src = &defaults
+	driverName := "postgres"
+	if cfg != nil && cfg.Driver != "" {
+		driverName = cfg.Driver
 	}
-	driver := src.Driver
-	proxyPort := src.Proxy.ListenPort
-	backend := fmt.Sprintf("%s:%d", src.Connection.Host, src.Connection.Port)
+
+	proxyPort := 5432
+	if cfg != nil && cfg.Proxy.ListenPort > 0 {
+		proxyPort = cfg.Proxy.ListenPort
+	}
+
+	backend := "127.0.0.1:5433"
+	if cfg != nil {
+		backend = fmt.Sprintf("%s:%d", cfg.Connection.Host, cfg.Connection.Port)
+	}
+
+	hooksInstalled := hook.AreHooksInstalled(cwd)
 
 	out := statusOutput{
 		Branch:         branch,
 		Sanitized:      sanitized,
-		Database:       dbName,
-		Driver:         driver,
+		Database:       statusDatabaseName(cfg, sanitized),
+		Driver:         driverName,
 		ProxyPort:      proxyPort,
 		Backend:        backend,
 		HooksInstalled: hooksInstalled,
@@ -225,19 +257,23 @@ func runStatus(cwd string, jsonOutput bool) {
 	}
 }
 
-func runSwitch(cwd, targetBranch string) {
-	sanitized := git.SanitizeBranchName(targetBranch)
-	cfg, err := config.LoadConfig(cwd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
-		os.Exit(1)
+// formatBytes formats bytes into human-readable representations.
+func formatBytes(bytes int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case bytes >= gb:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(gb))
+	case bytes >= mb:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
-
-	targetDB := cfg.DatabaseNameForBranch(sanitized)
-	fmt.Printf("🌿 Switching to branch database for %q...\n", targetBranch)
-	fmt.Printf("  • Branch:   %s\n", targetBranch)
-	fmt.Printf("  • Database: %s\n", targetDB)
-	fmt.Println("✅ Database target resolved. Active queries will route to this database.")
 }
 
 // getDriverForConfig resolves and initializes a database driver instance from configuration.
@@ -267,6 +303,62 @@ func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
 	}
 
 	return driver.GetDriver(drvName, params)
+}
+
+func runSwitch(cwd, targetBranch string, noCreate bool) {
+	sanitized := git.SanitizeBranchName(targetBranch)
+	cfg, err := config.LoadConfig(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	targetDB := cfg.DatabaseNameForBranch(sanitized)
+	defaultBranch := cfg.Proxy.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
+	fmt.Printf("🌿 Switching to branch database for %q...\n", targetBranch)
+	fmt.Printf("  • Branch:   %s\n", targetBranch)
+	fmt.Printf("  • Database: %s\n", targetDB)
+
+	if noCreate {
+		fmt.Println("✅ Database target resolved (--no-create specified).")
+		return
+	}
+
+	drv, err := getDriverForConfig(cfg)
+	if err != nil {
+		fmt.Printf("⚠️  Could not connect to database driver: %v\n", err)
+		fmt.Println("✅ Target resolved. Database provisioning skipped.")
+		return
+	}
+	defer func() {
+		_ = drv.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	exists, err := drv.BranchExists(ctx, sanitized)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Error checking branch existence: %v\n", err)
+		return
+	}
+
+	if exists {
+		fmt.Println("✅ Database already exists. Active queries will route to this database.")
+		return
+	}
+
+	fmt.Printf("🪄 Provisioning branch database %q from base %q...\n", targetDB, defaultBranch)
+	if err := drv.CreateBranch(ctx, defaultBranch, sanitized); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to create branch database: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("✅ Branch database provisioned successfully. Active queries will route to this database.")
 }
 
 func runProxy(cwd string) {
@@ -304,14 +396,199 @@ func runProxy(cwd string) {
 	_ = server.Stop()
 }
 
-func runList(cwd string) {
+func runList(cwd string, jsonOutput bool) {
+	cfg, err := config.LoadConfig(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	drv, err := getDriverForConfig(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing driver %s: %v\n", cfg.Driver, err)
+		os.Exit(1)
+	}
+	defer func() {
+		_ = drv.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	branches, err := drv.ListBranches(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error querying branch databases: %v\n", err)
+		os.Exit(1)
+	}
+
+	activeBranch, _ := git.ResolveCurrentBranch(cwd)
+	sanitizedActive := git.SanitizeBranchName(activeBranch)
+
+	for i := range branches {
+		if git.SanitizeBranchName(branches[i].Name) == sanitizedActive {
+			branches[i].IsActive = true
+		}
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(branches); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to encode JSON: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	fmt.Println("📋 BranchBase Managed Databases:")
-	runStatus(cwd, false)
+	if len(branches) == 0 {
+		fmt.Println("  No databases currently managed by BranchBase.")
+		return
+	}
+
+	fmt.Printf("  %-3s %-24s %-28s %-12s %-10s\n", "", "BRANCH", "DATABASE", "SIZE", "STATUS")
+	fmt.Printf("  %-3s %-24s %-28s %-12s %-10s\n", "", "------", "--------", "----", "------")
+
+	for _, b := range branches {
+		marker := " "
+		status := "Idle"
+		if b.IsProtected {
+			status = "Protected"
+		}
+		if b.IsActive {
+			marker = "*"
+			status = "Active"
+		}
+
+		fmt.Printf("  %-3s %-24s %-28s %-12s %-10s\n",
+			marker,
+			b.Name,
+			b.Database,
+			formatBytes(b.SizeBytes),
+			status,
+		)
+	}
+
+	fmt.Printf("\nTotal: %d managed database(s)\n", len(branches))
 }
 
-func runPrune(cwd string) {
-	fmt.Println("🧹 Pruning merged and orphaned branch databases...")
-	fmt.Println("✅ All branch databases are up to date. No orphaned databases found.")
+type pruneCandidate struct {
+	branch driver.BranchInfo
+	reason string
+}
+
+func runPrune(cwd string, dryRun, force bool) {
+	fmt.Println("🧹 Checking for merged and orphaned branch databases...")
+
+	cfg, err := config.LoadConfig(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	drv, err := getDriverForConfig(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing driver %s: %v\n", cfg.Driver, err)
+		os.Exit(1)
+	}
+	defer func() {
+		_ = drv.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	branches, err := drv.ListBranches(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error listing databases: %v\n", err)
+		os.Exit(1)
+	}
+
+	defaultBranch := cfg.Proxy.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
+	activeBranch, _ := git.ResolveCurrentBranch(cwd)
+	sanitizedActive := git.SanitizeBranchName(activeBranch)
+
+	localBranches, _ := git.ResolveLocalBranches(cwd)
+	localMap := make(map[string]bool)
+	for _, lb := range localBranches {
+		localMap[lb] = true
+		localMap[git.SanitizeBranchName(lb)] = true
+	}
+
+	mergedBranches, _ := git.ResolveMergedBranches(cwd, defaultBranch)
+	mergedMap := make(map[string]bool)
+	for _, mb := range mergedBranches {
+		mergedMap[mb] = true
+		mergedMap[git.SanitizeBranchName(mb)] = true
+	}
+
+	var candidates []pruneCandidate
+	var totalBytes int64
+
+	for _, b := range branches {
+		// Never prune protected base database or default branch or currently active branch
+		if b.IsProtected || b.Name == defaultBranch || b.Database == cfg.Connection.BaseDatabase {
+			continue
+		}
+		sanitizedName := git.SanitizeBranchName(b.Name)
+		if sanitizedName == sanitizedActive || sanitizedName == git.SanitizeBranchName(defaultBranch) {
+			continue
+		}
+
+		if mergedMap[b.Name] || mergedMap[sanitizedName] {
+			candidates = append(candidates, pruneCandidate{branch: b, reason: "merged"})
+			totalBytes += b.SizeBytes
+		} else if len(localMap) > 0 && !localMap[b.Name] && !localMap[sanitizedName] {
+			candidates = append(candidates, pruneCandidate{branch: b, reason: "orphaned"})
+			totalBytes += b.SizeBytes
+		}
+	}
+
+	if len(candidates) == 0 {
+		fmt.Println("✅ All branch databases are up to date. No orphaned or merged databases found.")
+		return
+	}
+
+	fmt.Printf("\nFound %d candidate database(s) to prune:\n", len(candidates))
+	for _, c := range candidates {
+		fmt.Printf("  • %-26s (branch: %-16s [%s]) - %s\n",
+			c.branch.Database, c.branch.Name, c.reason, formatBytes(c.branch.SizeBytes))
+	}
+	fmt.Printf("Total disk space to free: %s\n\n", formatBytes(totalBytes))
+
+	if dryRun {
+		fmt.Println("🔍 Dry run complete. No databases were deleted.")
+		return
+	}
+
+	if !force {
+		fmt.Print("Are you sure you want to delete these databases? [y/N]: ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("\nAborted. No databases were deleted.")
+			return
+		}
+		trimmed := strings.ToLower(strings.TrimSpace(input))
+		if trimmed != "y" && trimmed != "yes" {
+			fmt.Println("Aborted. No databases were deleted.")
+			return
+		}
+	}
+
+	for _, c := range candidates {
+		if err := drv.DeleteBranch(ctx, c.branch.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠️ Failed to delete %s: %v\n", c.branch.Database, err)
+		} else {
+			fmt.Printf("  🗑️  Deleted %s\n", c.branch.Database)
+		}
+	}
+
+	fmt.Println("✅ Pruning complete.")
 }
 
 func runHooks(cwd, action string) {
@@ -348,17 +625,54 @@ func runHookTrigger(cwd string, args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	branch, err := git.ResolveCurrentBranch(cwd)
-	if err != nil {
-		return
-	}
-
 	cfg, err := config.LoadConfig(cwd)
 	if err != nil || !cfg.Strategy.SnapshotOnSwitch {
 		return
 	}
 
-	_ = ctx
-	_ = branch
-	// Fast background hook execution completed
+	branch, err := git.ResolveCurrentBranch(cwd)
+	if err != nil || branch == "" {
+		return
+	}
+
+	defaultBranch := cfg.Proxy.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
+	sanitized := git.SanitizeBranchName(branch)
+	if sanitized == git.SanitizeBranchName(defaultBranch) {
+		return
+	}
+
+	drv, err := getDriverForConfig(cfg)
+	if err != nil {
+		logHookError(cwd, fmt.Sprintf("failed to get driver for config: %v", err))
+		return
+	}
+	defer func() {
+		_ = drv.Close()
+	}()
+
+	exists, err := drv.BranchExists(ctx, sanitized)
+	if err != nil {
+		logHookError(cwd, fmt.Sprintf("failed to check branch existence for %q: %v", sanitized, err))
+		return
+	}
+	if exists {
+		return
+	}
+
+	if err := drv.CreateBranch(ctx, defaultBranch, sanitized); err != nil {
+		logHookError(cwd, fmt.Sprintf("failed to pre-warm branch %q: %v", sanitized, err))
+	}
+}
+
+func logHookError(cwd, msg string) {
+	logLine := fmt.Sprintf("[%s] %s\n", time.Now().Format(time.RFC3339), msg)
+	f, err := os.OpenFile(filepath.Join(cwd, ".branchbase.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		_, _ = f.WriteString(logLine)
+		_ = f.Close()
+	}
 }

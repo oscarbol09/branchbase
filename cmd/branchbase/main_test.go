@@ -104,3 +104,131 @@ func TestBuildStatusWithConfig(t *testing.T) {
 		t.Fatalf("backend = %q, want 127.0.0.1:5432", info.Backend)
 	}
 }
+
+func TestFormatBytes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		bytes int64
+		want  string
+	}{
+		{500, "500 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1024 * 1024, "1.0 MB"},
+		{1024 * 1024 * 1024, "1.0 GB"},
+	}
+	for _, tt := range tests {
+		got := formatBytes(tt.bytes)
+		if got != tt.want {
+			t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
+		}
+	}
+}
+
+func TestRunSwitchAndListWithSqlite(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. Create base sqlite database
+	baseDB := filepath.Join(dir, "app_dev.db")
+	if err := os.WriteFile(baseDB, []byte("SQLite format 3\x00base-content"), 0644); err != nil {
+		t.Fatalf("failed to create base db: %v", err)
+	}
+
+	// 2. Write config pointing to sqlite
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Proxy.DefaultBranch = "main"
+
+	if err := cfg.SaveJSON(filepath.Join(dir, ".branchbase.json")); err != nil {
+		t.Fatalf("SaveJSON: %v", err)
+	}
+
+	// 3. runSwitch with --no-create
+	runSwitch(dir, "feature/dry-test", true)
+	branchDBPath := filepath.Join(dir, "app_dev_feature_dry_test.db")
+	if _, err := os.Stat(branchDBPath); !os.IsNotExist(err) {
+		t.Fatalf("expected %s not to exist after switch --no-create", branchDBPath)
+	}
+
+	// 4. runSwitch normal (should provision database)
+	runSwitch(dir, "feature/auth-v1", false)
+	authDBPath := filepath.Join(dir, "app_dev_feature_auth_v1.db")
+	if _, err := os.Stat(authDBPath); err != nil {
+		t.Fatalf("expected %s to exist after switch, got err: %v", authDBPath, err)
+	}
+
+	// 5. runSwitch again (idempotent, already exists)
+	runSwitch(dir, "feature/auth-v1", false)
+
+	// 6. runList (both table and json)
+	runList(dir, false)
+	runList(dir, true)
+}
+
+func TestRunPruneWithSqlite(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1. Initialize mock git repo
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(filepath.Join(gitDir, "refs", "heads"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "refs", "heads", "main"), []byte("commit-1\n"), 0644)
+
+	baseDB := filepath.Join(dir, "dev.db")
+	_ = os.WriteFile(baseDB, []byte("base-db-content"), 0644)
+
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Proxy.DefaultBranch = "main"
+	_ = cfg.SaveJSON(filepath.Join(dir, ".branchbase.json"))
+
+	// Create an orphaned branch database (no git branch exists for it)
+	orphanedDB := filepath.Join(dir, "dev_orphaned_feat.db")
+	_ = os.WriteFile(orphanedDB, []byte("orphaned-content"), 0644)
+
+	// 2. runPrune dry-run: should not delete
+	runPrune(dir, true, false)
+	if _, err := os.Stat(orphanedDB); err != nil {
+		t.Fatalf("dry run must not delete database: %v", err)
+	}
+
+	// 3. runPrune force: should delete orphaned database
+	runPrune(dir, false, true)
+	if _, err := os.Stat(orphanedDB); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be deleted after force prune", orphanedDB)
+	}
+}
+
+func TestRunHookTriggerWithSqlite(t *testing.T) {
+	dir := t.TempDir()
+
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/hook-prewarm\n"), 0644)
+
+	baseDB := filepath.Join(dir, "myapp.db")
+	_ = os.WriteFile(baseDB, []byte("myapp-content"), 0644)
+
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Strategy.SnapshotOnSwitch = true
+	cfg.Proxy.DefaultBranch = "main"
+	_ = cfg.SaveJSON(filepath.Join(dir, ".branchbase.json"))
+
+	runHookTrigger(dir, nil)
+
+	prewarmedDB := filepath.Join(dir, "myapp_feature_hook_prewarm.db")
+	if _, err := os.Stat(prewarmedDB); err != nil {
+		t.Fatalf("expected pre-warmed database %s to exist: %v", prewarmedDB, err)
+	}
+}
