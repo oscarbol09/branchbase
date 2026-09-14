@@ -281,7 +281,9 @@ func runProxy(cwd string) {
 	if err != nil {
 		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Driver, err)
 	} else {
-		defer drv.Close()
+		defer func() {
+			_ = drv.Close()
+		}()
 	}
 
 	server := proxy.NewServer(cfg, cwd, drv)
