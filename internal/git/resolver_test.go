@@ -157,3 +157,87 @@ func TestResolveCurrentBranchWorktree(t *testing.T) {
 		t.Errorf("expected 'feature/worktree-branch', got %q", branch)
 	}
 }
+
+func TestResolveLocalBranchesLoose(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	headsDir := filepath.Join(tempDir, ".git", "refs", "heads", "feature")
+	if err := os.MkdirAll(headsDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	mainFile := filepath.Join(tempDir, ".git", "refs", "heads", "main")
+	if err := os.WriteFile(mainFile, []byte("commit-hash-1\n"), 0644); err != nil {
+		t.Fatalf("write main: %v", err)
+	}
+
+	featFile := filepath.Join(headsDir, "auth")
+	if err := os.WriteFile(featFile, []byte("commit-hash-2\n"), 0644); err != nil {
+		t.Fatalf("write feat: %v", err)
+	}
+
+	branches, err := ResolveLocalBranches(tempDir)
+	if err != nil {
+		t.Fatalf("ResolveLocalBranches failed: %v", err)
+	}
+
+	branchMap := make(map[string]bool)
+	for _, b := range branches {
+		branchMap[b] = true
+	}
+
+	if !branchMap["main"] {
+		t.Errorf("expected 'main' in branches, got %v", branches)
+	}
+	if !branchMap["feature/auth"] {
+		t.Errorf("expected 'feature/auth' in branches, got %v", branches)
+	}
+}
+
+func TestResolveLocalBranchesPacked(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	gitDir := filepath.Join(tempDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	packedRefs := `# pack-refs with: peeled-tags
+e02b7e1975e5330335e386992adbe813636f0de2 refs/heads/staging
+b12f45c21975e5330335e386992adbe813636f0de refs/heads/feature/payments
+^e02b7e1975e5330335e386992adbe813636f0de2
+`
+	if err := os.WriteFile(filepath.Join(gitDir, "packed-refs"), []byte(packedRefs), 0644); err != nil {
+		t.Fatalf("write packed-refs: %v", err)
+	}
+
+	branches, err := ResolveLocalBranches(tempDir)
+	if err != nil {
+		t.Fatalf("ResolveLocalBranches failed: %v", err)
+	}
+
+	branchMap := make(map[string]bool)
+	for _, b := range branches {
+		branchMap[b] = true
+	}
+
+	if !branchMap["staging"] {
+		t.Errorf("expected 'staging' in branches, got %v", branches)
+	}
+	if !branchMap["feature/payments"] {
+		t.Errorf("expected 'feature/payments' in branches, got %v", branches)
+	}
+}
+
+func TestResolveLocalBranchesNotAGitRepo(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	_, err := ResolveLocalBranches(tempDir)
+	if err == nil {
+		t.Fatal("expected error when resolving branches in non-git directory, got nil")
+	}
+}
+

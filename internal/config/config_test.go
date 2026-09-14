@@ -151,3 +151,65 @@ func TestLoadConfigCorruptJSON(t *testing.T) {
 		t.Fatal("expected unmarshal error when loading corrupt json, got nil")
 	}
 }
+
+func TestLoadConfigEnvExpansion(t *testing.T) {
+	t.Setenv("BB_TEST_HOST", "db.example.internal")
+	t.Setenv("BB_TEST_USER", "vault_user")
+	t.Setenv("BB_TEST_PASS", "super-secret-pw")
+
+	tempDir := t.TempDir()
+	yamlPath := filepath.Join(tempDir, ".branchbase.yaml")
+	content := []byte(`
+connection:
+  host: ${BB_TEST_HOST}
+  user: ${BB_TEST_USER}
+  password: ${BB_TEST_PASS}
+  base_database: prod_dev
+`)
+	if err := os.WriteFile(yamlPath, content, 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if loaded.Connection.Host != "db.example.internal" {
+		t.Errorf("expected host 'db.example.internal', got %q", loaded.Connection.Host)
+	}
+	if loaded.Connection.User != "vault_user" {
+		t.Errorf("expected user 'vault_user', got %q", loaded.Connection.User)
+	}
+	if loaded.Connection.Password != "super-secret-pw" {
+		t.Errorf("expected password 'super-secret-pw', got %q", loaded.Connection.Password)
+	}
+}
+
+func TestLoadConfigYMLExtension(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	ymlPath := filepath.Join(tempDir, ".branchbase.yml")
+	content := []byte(`
+driver: sqlite
+connection:
+  base_database: yml_app_dev
+`)
+	if err := os.WriteFile(ymlPath, content, 0644); err != nil {
+		t.Fatalf("failed to write .branchbase.yml: %v", err)
+	}
+
+	loaded, err := LoadConfig(tempDir)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if loaded.Driver != "sqlite" {
+		t.Errorf("expected driver 'sqlite', got %q", loaded.Driver)
+	}
+	if loaded.Connection.BaseDatabase != "yml_app_dev" {
+		t.Errorf("expected base_database 'yml_app_dev', got %q", loaded.Connection.BaseDatabase)
+	}
+}
+
