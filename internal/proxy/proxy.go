@@ -21,6 +21,7 @@ type Server struct {
 	listener net.Listener
 	quit     chan struct{}
 	wg       sync.WaitGroup
+	stopOnce sync.Once
 }
 
 // NewServer initializes a new transparent proxy server
@@ -131,7 +132,9 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// 4. Bidirectional streaming (zero-overhead pipe)
+	// 4. Bidirectional streaming. When either direction finishes, close both
+	// sockets so the other io.Copy unblocks, then drain both goroutines before
+	// returning (avoids leaking a blocked copy + FD under half-close).
 	errChan := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(backendConn, clientConn)
@@ -143,14 +146,20 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}()
 
 	<-errChan
+	_ = clientConn.Close()
+	_ = backendConn.Close()
+	<-errChan
 }
 
-// Stop gracefully shuts down the proxy server
+// Stop gracefully shuts down the proxy server.
+// It is safe to call Stop more than once, including concurrently.
 func (s *Server) Stop() error {
-	close(s.quit)
-	if s.listener != nil {
-		_ = s.listener.Close()
-	}
+	s.stopOnce.Do(func() {
+		close(s.quit)
+		if s.listener != nil {
+			_ = s.listener.Close()
+		}
+	})
 	s.wg.Wait()
 	log.Println("[BranchBase Proxy] Stopped.")
 	return nil

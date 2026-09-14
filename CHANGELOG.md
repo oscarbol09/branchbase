@@ -9,7 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Idempotent and thread-safe `Server.Stop()` shutdown via `sync.Once`, preventing channel close panics on repeated calls (#35).
+- Accurate `.branchbase.yaml` configuration parsing using `yaml.v3`, preserving defaults for unspecified fields (#36).
+- Explicit `ErrPacketTooLarge` error returned when client startup packets exceed the 10KB limit (#37).
+
 ### Added
+- Native Go fuzz testing (`testing.F`) for `pgwire.ParseStartupMessage` and `git.SanitizeBranchName`.
+- Automated vulnerability scanning in CI via `govulncheck`.
+- Concurrency cancellation (`cancel-in-progress`) and 10-minute job timeouts in CI/CD pipeline.
+- Race detector (`-race`) execution on Unix runners in CI matrix.
+- Proxy server lifecycle and graceful shutdown tests (`internal/proxy/proxy_test.go`).
+- Database driver safety guard tests preventing deletion of protected base databases.
+- Comprehensive negative and boundary tests for Git HEAD resolver, worktrees, and detached states.
+- `--json` output flag for `branchbase status` providing structured JSON output for scripts and devtools (#17).
+- Bidirectional socket cleanup and channel draining in proxy `handleConnection`, eliminating goroutine and file descriptor leaks on half-close (#18).
+- Defensive bounds checks and error reporting for inverted or corrupted hook markers in `UninstallHooks` (#15).
+- Nil-safe fallback in `runStatus` when `.branchbase.json` is missing or nil (#16).
+- CI matrix compatibility fix for macOS ARM64 runners requiring Go 1.23+ dyld `LC_UUID` (#20).
 - PostgreSQL wire protocol `StartupMessage` packet parser and dynamic rewriter (`internal/proxy/pgwire`).
 - Automated Git hook engine (`internal/hook`) installing `post-checkout` and `post-merge` hooks.
 - CLI subcommands for hook lifecycle management: `branchbase hooks [install|uninstall|status]`.

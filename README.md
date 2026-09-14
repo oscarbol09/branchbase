@@ -189,6 +189,15 @@ git checkout main
 # Proxy immediately routes traffic back to your main database! No migration errors!
 ```
 
+### 4. Inspect Branch Status
+```bash
+# Human-readable summary
+branchbase status
+
+# Machine-readable JSON for prompt scripts, CI/CD, or status bars
+branchbase status --json
+```
+
 ---
 
 ## 🤝 Contributing & Community
