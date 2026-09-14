@@ -2,13 +2,79 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/branchbase/branchbase/internal/config"
+	"github.com/branchbase/branchbase/internal/driver"
 )
+
+type mockDriver struct {
+	mu          sync.Mutex
+	branches    map[string]bool
+	createCalls int
+	createDelay time.Duration
+	createErr   error
+	existsErr   error
+}
+
+func newMockDriver() *mockDriver {
+	return &mockDriver{
+		branches: make(map[string]bool),
+	}
+}
+
+func (m *mockDriver) Name() string { return "mock" }
+func (m *mockDriver) Ping(ctx context.Context) error { return nil }
+func (m *mockDriver) Close() error { return nil }
+
+func (m *mockDriver) BranchExists(ctx context.Context, branchName string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.existsErr != nil {
+		return false, m.existsErr
+	}
+	return m.branches[branchName], nil
+}
+
+func (m *mockDriver) CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error {
+	if m.createDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(m.createDelay):
+		}
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.createCalls++
+	if m.createErr != nil {
+		return m.createErr
+	}
+	m.branches[targetBranch] = true
+	return nil
+}
+
+func (m *mockDriver) DeleteBranch(ctx context.Context, branchName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.branches, branchName)
+	return nil
+}
+
+func (m *mockDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var list []driver.BranchInfo
+	for b := range m.branches {
+		list = append(list, driver.BranchInfo{Name: b, Database: b})
+	}
+	return list, nil
+}
 
 func TestServerLifecycle(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -16,7 +82,7 @@ func TestServerLifecycle(t *testing.T) {
 	cfg.Connection.Host = "127.0.0.1"
 	cfg.Connection.Port = 59999 // Backend doesn't need to accept for lifecycle check
 
-	srv := NewServer(&cfg, t.TempDir())
+	srv := NewServer(&cfg, t.TempDir(), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -53,7 +119,7 @@ func TestServerLifecycle(t *testing.T) {
 
 func TestServerStopUnstarted(t *testing.T) {
 	cfg := config.DefaultConfig()
-	srv := NewServer(&cfg, t.TempDir())
+	srv := NewServer(&cfg, t.TempDir(), nil)
 
 	// Stopping an unstarted server should not panic
 	if err := srv.Stop(); err != nil {
@@ -67,7 +133,7 @@ func TestServerStopIdempotent(t *testing.T) {
 	cfg.Connection.Host = "127.0.0.1"
 	cfg.Connection.Port = 59999
 
-	srv := NewServer(&cfg, t.TempDir())
+	srv := NewServer(&cfg, t.TempDir(), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -89,7 +155,7 @@ func TestServerStopConcurrent(t *testing.T) {
 	cfg.Connection.Host = "127.0.0.1"
 	cfg.Connection.Port = 59999
 
-	srv := NewServer(&cfg, t.TempDir())
+	srv := NewServer(&cfg, t.TempDir(), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -125,7 +191,7 @@ func TestServerStartStopRace(t *testing.T) {
 
 	const n = 50
 	for i := 0; i < n; i++ {
-		srv := NewServer(&cfg, t.TempDir())
+		srv := NewServer(&cfg, t.TempDir(), nil)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 		var wg sync.WaitGroup
@@ -152,7 +218,7 @@ func TestServerAcceptLoopStopRace(t *testing.T) {
 	cfg.Connection.Host = "127.0.0.1"
 	cfg.Connection.Port = 59999
 
-	srv := NewServer(&cfg, t.TempDir())
+	srv := NewServer(&cfg, t.TempDir(), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -186,6 +252,111 @@ func TestServerAcceptLoopStopRace(t *testing.T) {
 
 	if err := srv.Stop(); err != nil {
 		t.Fatalf("final Stop: %v", err)
+	}
+}
+
+func TestProxyEnsureBranchExists_AlreadyExists(t *testing.T) {
+	cfg := config.DefaultConfig()
+	drv := newMockDriver()
+	drv.branches["feature-existing"] = true
+
+	srv := NewServer(&cfg, t.TempDir(), drv)
+	if err := srv.ensureBranchExists("feature-existing", "main"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if drv.createCalls != 0 {
+		t.Fatalf("expected 0 CreateBranch calls for existing branch, got %d", drv.createCalls)
+	}
+}
+
+func TestProxyEnsureBranchExists_ProvisionsWhenMissing(t *testing.T) {
+	cfg := config.DefaultConfig()
+	drv := newMockDriver()
+
+	srv := NewServer(&cfg, t.TempDir(), drv)
+	if err := srv.ensureBranchExists("feature-new", "main"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if drv.createCalls != 1 {
+		t.Fatalf("expected 1 CreateBranch call, got %d", drv.createCalls)
+	}
+	if !drv.branches["feature-new"] {
+		t.Fatal("expected feature-new branch to be marked as existing")
+	}
+}
+
+func TestProxyEnsureBranchExists_ConcurrentSameBranch(t *testing.T) {
+	cfg := config.DefaultConfig()
+	drv := newMockDriver()
+	drv.createDelay = 15 * time.Millisecond // Simulate database clone latency
+
+	srv := NewServer(&cfg, t.TempDir(), drv)
+
+	const n = 20
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+	wg.Add(n)
+
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			errCh <- srv.ensureBranchExists("feature-race", "main")
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent ensureBranchExists returned error: %v", err)
+		}
+	}
+
+	if drv.createCalls != 1 {
+		t.Fatalf("expected exactly 1 CreateBranch call under race, got %d", drv.createCalls)
+	}
+	if srv.keyLock.keyCount() != 0 {
+		t.Fatalf("expected keyLock to be clean (keyCount == 0), got %d", srv.keyLock.keyCount())
+	}
+}
+
+func TestProxyEnsureBranchExists_ConcurrentDifferentBranches(t *testing.T) {
+	cfg := config.DefaultConfig()
+	drv := newMockDriver()
+	drv.createDelay = 10 * time.Millisecond
+
+	srv := NewServer(&cfg, t.TempDir(), drv)
+
+	const n = 10
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+	wg.Add(n)
+
+	for i := 0; i < n; i++ {
+		branch := fmt.Sprintf("feature-%d", i)
+		go func(b string) {
+			defer wg.Done()
+			errCh <- srv.ensureBranchExists(b, "main")
+		}(branch)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent ensureBranchExists returned error: %v", err)
+		}
+	}
+
+	if drv.createCalls != n {
+		t.Fatalf("expected %d CreateBranch calls for distinct branches, got %d", n, drv.createCalls)
+	}
+	if srv.keyLock.keyCount() != 0 {
+		t.Fatalf("expected keyLock to be clean (keyCount == 0), got %d", srv.keyLock.keyCount())
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/branchbase/branchbase/internal/config"
+	"github.com/branchbase/branchbase/internal/driver"
 	_ "github.com/branchbase/branchbase/internal/driver/postgres"
 	_ "github.com/branchbase/branchbase/internal/driver/sqlite"
 	"github.com/branchbase/branchbase/internal/git"
@@ -239,6 +240,34 @@ func runSwitch(cwd, targetBranch string) {
 	fmt.Println("✅ Database target resolved. Active queries will route to this database.")
 }
 
+// getDriverForConfig resolves and initializes a database driver instance from configuration.
+func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is nil")
+	}
+
+	params := make(map[string]interface{})
+	params["host"] = cfg.Connection.Host
+	params["port"] = cfg.Connection.Port
+	params["user"] = cfg.Connection.User
+	params["password"] = cfg.Connection.Password
+	params["base_database"] = cfg.Database.BaseDatabase
+	params["sslmode"] = cfg.Connection.SSLMode
+
+	// For SQLite
+	params["path"] = cfg.Database.BaseDatabase
+	if cfg.Database.BaseDatabase != "" {
+		params["base_database"] = cfg.Database.BaseDatabase
+	}
+
+	drvName := cfg.Connection.Driver
+	if drvName == "" {
+		drvName = "postgres"
+	}
+
+	return driver.GetDriver(drvName, params)
+}
+
 func runProxy(cwd string) {
 	cfg, err := config.LoadConfig(cwd)
 	if err != nil {
@@ -247,7 +276,14 @@ func runProxy(cwd string) {
 		cfg = &defaultCfg
 	}
 
-	server := proxy.NewServer(cfg, cwd)
+	drv, err := getDriverForConfig(cfg)
+	if err != nil {
+		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Connection.Driver, err)
+	} else {
+		defer drv.Close()
+	}
+
+	server := proxy.NewServer(cfg, cwd, drv)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

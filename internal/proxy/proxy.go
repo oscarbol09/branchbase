@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/branchbase/branchbase/internal/config"
+	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/proxy/pgwire"
 )
@@ -18,6 +19,8 @@ import (
 type Server struct {
 	cfg      *config.Config
 	repoPath string
+	drv      driver.Driver
+	keyLock  *keyedMutex
 	mu       sync.Mutex
 	listener net.Listener
 	quit     chan struct{}
@@ -26,10 +29,12 @@ type Server struct {
 }
 
 // NewServer initializes a new transparent proxy server
-func NewServer(cfg *config.Config, repoPath string) *Server {
+func NewServer(cfg *config.Config, repoPath string, drv driver.Driver) *Server {
 	return &Server{
 		cfg:      cfg,
 		repoPath: repoPath,
+		drv:      drv,
+		keyLock:  newKeyedMutex(),
 		quit:     make(chan struct{}),
 	}
 }
@@ -92,6 +97,42 @@ func (s *Server) acceptLoop() {
 	}
 }
 
+// ensureBranchExists checks whether targetBranch database exists, and if not,
+// provisions it from defaultBranch using double-checked locking per branch.
+func (s *Server) ensureBranchExists(targetBranch, defaultBranch string) error {
+	if s.drv == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Fast path: check existence without lock
+	exists, err := s.drv.BranchExists(ctx, targetBranch)
+	if err == nil && exists {
+		return nil
+	}
+
+	// Slow path: acquire keyed lock to prevent duplicate provisioning races
+	if s.keyLock != nil {
+		unlock := s.keyLock.Lock(targetBranch)
+		defer unlock()
+
+		// Re-check existence under lock
+		exists, err = s.drv.BranchExists(ctx, targetBranch)
+		if err == nil && exists {
+			return nil
+		}
+	}
+
+	log.Printf("[BranchBase Proxy] 🪄 JIT provisioning database for branch %q from %q...", targetBranch, defaultBranch)
+	if err := s.drv.CreateBranch(ctx, defaultBranch, targetBranch); err != nil {
+		return fmt.Errorf("failed to JIT provision branch %q: %w", targetBranch, err)
+	}
+	log.Printf("[BranchBase Proxy] ✅ JIT provisioned database for branch %q", targetBranch)
+	return nil
+}
+
 func (s *Server) handleConnection(clientConn net.Conn) {
 	defer func() {
 		_ = clientConn.Close()
@@ -104,6 +145,19 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}
 	sanitizedBranch := git.SanitizeBranchName(activeBranch)
 	targetDB := s.cfg.DatabaseNameForBranch(sanitizedBranch)
+
+	defaultBranch := s.cfg.Proxy.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
+	// 1b. JIT branch provisioning if branch differs from default
+	if s.drv != nil && sanitizedBranch != git.SanitizeBranchName(defaultBranch) {
+		if err := s.ensureBranchExists(sanitizedBranch, defaultBranch); err != nil {
+			log.Printf("[BranchBase Proxy] ❌ JIT branch provisioning failed for %q: %v", sanitizedBranch, err)
+			return
+		}
+	}
 
 	log.Printf("[BranchBase Proxy] Routing client connection -> Branch: %q (DB: %q)", activeBranch, targetDB)
 
