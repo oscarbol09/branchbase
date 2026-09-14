@@ -379,7 +379,7 @@ func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create mock backend listener: %v", err)
 	}
-	defer backendListener.Close()
+	defer func() { _ = backendListener.Close() }()
 
 	backendPort := backendListener.Addr().(*net.TCPAddr).Port
 
@@ -390,7 +390,7 @@ func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 1024)
 		n, _ := conn.Read(buf)
@@ -435,7 +435,7 @@ func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to dial proxy: %v", err)
 	}
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	var buf bytes.Buffer
 	buf.Write([]byte{0, 0, 0, 0}) // placeholder
