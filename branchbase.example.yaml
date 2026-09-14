@@ -1,5 +1,6 @@
 # BranchBase Configuration Specification
-# Save this file as .branchbase.yaml in your repository root
+# Save this file as .branchbase.yaml or .branchbase.yml in your repository root
+# Environment variable expansion (${ENV_VAR} or $ENV_VAR) is supported across all fields.
 
 version: "1"
 
@@ -9,11 +10,12 @@ driver: "postgres"
 
 # Target underlying database configuration (e.g. your local Docker container)
 connection:
-  host: "127.0.0.1"
+  host: "${DB_HOST:-127.0.0.1}"
   port: 5433             # Real database port where Docker exposes the engine
-  user: "postgres"
-  password: "password"
+  user: "${DB_USER:-postgres}"
+  password: "${DB_PASSWORD:-password}"
   base_database: "myapp_dev"   # Canonical base database (e.g., matching main/master)
+  # path: "myapp_dev.db"       # For SQLite: path to local database file
 
 # Transparent proxy settings
 proxy:

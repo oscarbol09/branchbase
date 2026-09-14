@@ -34,14 +34,15 @@ graph TD
 ## 2. Core Components
 
 ### 2.1 The Git Context Resolver (`internal/git`)
-* **Responsibility:** Determines the currently active branch in the repository root without executing expensive subshells.
+* **Responsibility:** Determines active, local, and merged branches in the repository without invoking uncontrolled subshells.
 * **Mechanism:** 
-  1. Inspects `.git/HEAD`.
-  2. If `HEAD` is a symbolic ref (`ref: refs/heads/feature-name`), resolves the branch name directly.
-  3. Sanitizes branch names for database naming compatibility (e.g. `feature/stripe-v2` $\rightarrow$ `feature_stripe_v2`).
+  1. `ResolveCurrentBranch`: Reads `.git/HEAD` (or worktree `gitdir`) directly to resolve active branch in sub-millisecond time.
+  2. `ResolveLocalBranches`: Queries `git for-each-ref --format=%(refname:short) refs/heads` with automatic fallback to filesystem inspection of `.git/refs/heads/` and `.git/packed-refs` (retaining full branch awareness post-`git gc`).
+  3. `ResolveMergedBranches`: Queries `git branch --merged <defaultBranch>` using explicit argument vectors to identify safe deletion candidates.
+  4. Sanitizes branch names for database naming compatibility (`feature/stripe-v2` $\rightarrow$ `feature_stripe_v2`).
 
 ### 2.2 The Database Driver Interface (`internal/driver`)
-Every supported database implements a standard Go/Rust interface:
+Every supported database implements a standard Go interface:
 
 ```go
 type Driver interface {
@@ -62,25 +63,29 @@ type Driver interface {
 
     // ListBranches returns all databases managed by BranchBase
     ListBranches(ctx context.Context) ([]BranchInfo, error)
+
+    // Close releases database connections and engine pools
+    Close() error
 }
 ```
 
 #### PostgreSQL Implementation:
-Postgres natively supports instant database cloning via the `TEMPLATE` directive:
+Postgres natively supports instant database cloning via the `TEMPLATE` directive with `lib/pq` connection management:
 ```sql
 -- Step 1: Disconnect any active connections to template (if needed)
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity 
 WHERE datname = 'myapp_dev_main' AND pid <> pg_backend_pid();
 
 -- Step 2: Instant copy-on-write clone
-CREATE DATABASE myapp_dev_feature_billing TEMPLATE myapp_dev_main;
+CREATE DATABASE "myapp_dev_feature_billing" TEMPLATE "myapp_dev_main";
 ```
+Idempotency is preserved by gracefully handling PostgreSQL SQLSTATE `42P04` (`duplicate_database`).
 
 #### SQLite Implementation:
-For SQLite, BranchBase utilizes filesystem-level **Copy-on-Write (CoW)** where supported:
-* **macOS (APFS):** `clonefile()` syscall (instant 0-byte clone).
+For SQLite, BranchBase utilizes filesystem-level **Copy-on-Write (CoW)** snapshots with `.db-wal` and `.db-shm` replication:
+* **macOS (APFS):** High-throughput cloning.
 * **Linux (Btrfs / XFS):** `ioctl(FICLONE)` reflink copying.
-* **Windows (ReFS / NTFS fallback):** Hardlink or optimized fast stream copy.
+* **Windows & Fallback:** Buffered stream copy with full file sync.
 
 ---
 
@@ -89,11 +94,12 @@ To ensure developers **never have to touch `.env`** or restart their dev servers
 
 1. The proxy listens on the standard port (e.g., `5432` for Postgres).
 2. The real database container is remapped to an internal port (e.g., `5433` or a UNIX domain socket).
-3. The proxy intercepts the initial connection handshake:
-   * **PostgreSQL StartupPacket:** The client sends the requested database name in the startup message (`StartupMessage` packet).
-   * The proxy replaces the target database name with the branch-specific database name (e.g., rewriting `myapp_dev` to `myapp_dev_feature_billing`).
-   * Forwards the modified byte stream to the underlying database.
-   * From that point forward, acts as a high-performance, zero-overhead bidirectional TCP forwarder.
+3. **On-Demand (JIT) Branch Provisioning:**
+   - If incoming connection targets an unprovisioned branch, `Server.ensureBranchExists()` provisions the database on the fly from the default branch.
+   - Guarded by a refcounted `keyedMutex` using **double-checked locking**: fast-path check avoids locking for existing databases; slow-path lock serializes concurrent incoming connections for the same missing branch.
+   - Strict 5-second `context.WithTimeout` prevents connection starvation.
+4. **Wire-Protocol Rewriting:**
+   - Intercepts PostgreSQL `StartupMessage`, rewrites database parameter to branch database (`myapp_dev_feature_billing`), responds to SSL negotiation, and streams bidirectionally with zero overhead.
 
 ---
 
@@ -130,12 +136,13 @@ sequenceDiagram
 
 Over time, working on dozens of feature branches can accumulate disk space.
 
-* **Command:** `branchbase prune`
+* **Command:** `branchbase prune [--dry-run] [--force]`
 * **Algorithm:**
-  1. Inspects local and remote Git branches using `git branch --merged` and `git for-each-ref`.
-  2. Identifies all databases matching the pattern `<base_db>_<branch>`.
-  3. If the branch has been merged into the default branch (`main`/`master`) or deleted, the database is marked for deletion.
-  4. Drops the ephemeral databases, freeing all allocated storage.
+  1. Inspects local and merged Git branches via `git.ResolveMergedBranches()` and `git.ResolveLocalBranches()`.
+  2. Identifies all databases matching the pattern `<base_db>_<branch>`, excluding protected base databases and the currently active branch.
+  3. If `--dry-run` is provided, previews candidates and freed disk space without deleting.
+  4. Prompts interactive confirmation (`[y/N]`) before deletion unless `--force` / `-f` is specified.
+  5. Safely deletes ephemeral databases, freeing allocated storage.
 
 ---
 

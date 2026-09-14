@@ -79,13 +79,13 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 | Command | What it does |
 | :--- | :--- |
 | `branchbase init` | Interactively inspect repository and generate `.branchbase.json` |
-| `branchbase proxy` | Start the local transparent TCP routing proxy (default port: `5432`) |
-| `branchbase status` | Display the active Git branch, sanitized name, target DB, and driver status |
-| `branchbase list` | List all active and ephemeral databases managed by BranchBase with disk usage |
-| `branchbase switch <branch>` | Manually switch or provision an isolated database for a specific branch |
+| `branchbase proxy` | Start the local transparent TCP routing proxy (default port: `5432`) with JIT provisioning |
+| `branchbase status [--json]` | Display active Git branch, sanitized name, target DB, and proxy status |
+| `branchbase list [--json]` | List all active and ephemeral databases managed by BranchBase with size and status |
+| `branchbase switch <branch> [--no-create]` | Manually switch or provision an isolated database for a specific branch |
 | `branchbase hooks install` | Install automated `post-checkout` and `post-merge` hooks into `.git/hooks/` |
 | `branchbase hooks status` | Inspect Git hooks installation and activity status |
-| `branchbase prune` | Detect and delete databases associated with merged or deleted Git branches |
+| `branchbase prune [--dry-run] [--force]` | Reconcile merged/orphaned branches and safely delete corresponding databases |
 | `branchbase version` | Print the current BranchBase version |
 
 ---
@@ -153,6 +153,7 @@ type Driver interface {
     CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error
     DeleteBranch(ctx context.Context, branchName string) error
     ListBranches(ctx context.Context) ([]BranchInfo, error)
+    Close() error
 }
 ```
 

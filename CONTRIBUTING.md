@@ -77,13 +77,14 @@ type Driver interface {
     CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error
     DeleteBranch(ctx context.Context, branchName string) error
     ListBranches(ctx context.Context) ([]BranchInfo, error)
+    Close() error
 }
 ```
 
 1. Create a new package under `internal/driver/<engine>/`.
 2. Implement all interface methods.
-3. Add unit and integration tests using `testcontainers-go`.
-4. Register the driver in `internal/driver/registry.go`.
+3. Add unit and integration tests.
+4. Register the driver via `driver.Register("<engine>", factory)` in `init()`.
 5. Open a Pull Request!
 
 ---

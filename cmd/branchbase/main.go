@@ -30,12 +30,12 @@ Usage:
   branchbase <command> [arguments]
 
 Core Commands:
-  init          Initialize BranchBase in current repository (.branchbase.json & Git hooks)
-  status        Show current Git branch, target database, and proxy status
-  proxy         Start the local transparent TCP routing proxy
-  switch <name> Manually switch or provision an isolated database for a branch
-  list          List all active and ephemeral databases managed by BranchBase
-  prune         Delete databases associated with merged or deleted Git branches
+  init                     Initialize BranchBase in current repository (.branchbase.json & Git hooks)
+  status [--json]          Show current Git branch, target database, and proxy status
+  proxy                    Start the local transparent TCP routing proxy
+  switch <name> [--no-create] Manually switch or provision an isolated database for a branch
+  list [--json]            List all active and ephemeral databases managed by BranchBase
+  prune [--dry-run] [--force] Delete databases associated with merged or deleted Git branches
 
 Hook Management:
   hooks install    Install post-checkout and post-merge hooks into .git/hooks/
