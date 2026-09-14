@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Strict target database identifier validation and sanitization in `pgwire.RewriteDatabase()`, enforcing standard PostgreSQL naming conventions, a 63-byte limit, and rejecting embedded null bytes (#41).
+
 ### Fixed
+- Thread-safe `Server.listener` access synchronized with a mutex across `Start()`, `acceptLoop()`, and `Stop()`, eliminating data races under `-race` (#39).
 - Idempotent and thread-safe `Server.Stop()` shutdown via `sync.Once`, preventing channel close panics on repeated calls (#35).
 - Accurate `.branchbase.yaml` configuration parsing using `yaml.v3`, preserving defaults for unspecified fields (#36).
 - Explicit `ErrPacketTooLarge` error returned when client startup packets exceed the 10KB limit (#37).
