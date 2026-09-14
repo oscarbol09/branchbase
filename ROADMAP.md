@@ -41,7 +41,7 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - Linux `ioctl(FICLONE)` reflink support for Btrfs and XFS.
   - Windows fast stream-copy fallback.
   - WAL and SHM sidecar file replication and crash-recovery support.
-- [ ] **Cleanup & Pruning:**
+- [x] **Cleanup & Pruning:**
   - `branchbase prune`: Detect merged and orphaned Git branches and delete corresponding databases.
   - Interactive deletion confirmation (`--dry-run` and `--force`).
 - [ ] **Terminal UI (TUI):**

@@ -13,12 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strict target database identifier validation and sanitization in `pgwire.RewriteDatabase()`, enforcing standard PostgreSQL naming conventions, a 63-byte limit, and rejecting embedded null bytes (#41).
 
 ### Fixed
+- PostgreSQL driver connection pool initialization with `lib/pq` and `database/sql`, supporting SQLSTATE `42P04` (`duplicate_database`) idempotent branching and hermetic `sqlmock` tests (#24).
+- Explicit `Close() error` resource teardown across database drivers and CLI proxy lifecycle (#24).
 - Thread-safe `Server.listener` access synchronized with a mutex across `Start()`, `acceptLoop()`, and `Stop()`, eliminating data races under `-race` (#39).
 - Idempotent and thread-safe `Server.Stop()` shutdown via `sync.Once`, preventing channel close panics on repeated calls (#35).
 - Accurate `.branchbase.yaml` configuration parsing using `yaml.v3`, preserving defaults for unspecified fields (#36).
 - Explicit `ErrPacketTooLarge` error returned when client startup packets exceed the 10KB limit (#37).
 
 ### Added
+- Proxy Just-in-Time (JIT) branch database provisioning (`internal/proxy`) under double-checked locking with refcounted `keyedMutex` (#31).
+- Environment variable expansion (`${ENV_VAR}` and `$ENV_VAR`) in configuration files with `.branchbase.yml` extension support (#48).
+- Git branch discovery (`ResolveLocalBranches`) and merged branch resolution (`ResolveMergedBranches`) with packed-refs and fallback inspection (#48).
+- Dynamic branch provisioning on `branchbase switch <branch>` with `--no-create` flag (#29).
+- Formatted ASCII table and structured `--json` output for `branchbase list` (#27).
+- Merged and orphaned branch database reconciliation in `branchbase prune` with `--dry-run`, interactive `[y/N]` confirmation, and `--force` flag (#28, #53).
+- Non-intrusive background branch database pre-warming in `branchbase hook-trigger` with 5-second context timeout and `.branchbase.log` error tracking (#30).
+- Hermetic end-to-end CLI integration tests (`cmd/branchbase/main_test.go`) utilizing pure-filesystem SQLite driver in `t.TempDir()`.
 - Pure Go SQLite database driver (`internal/driver/sqlite`) supporting filesystem Copy-on-Write snapshots (Linux ioctl `FICLONE`, macOS, Windows streaming fallback) and WAL/SHM replication (#2).
 - Native Go fuzz testing (`testing.F`) for `pgwire.ParseStartupMessage` and `git.SanitizeBranchName`.
 - Automated vulnerability scanning in CI via `govulncheck`.
