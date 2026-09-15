@@ -520,7 +520,11 @@ func runPrune(cwd string, dryRun, force bool) {
 		defaultBranch = "main"
 	}
 
-	activeBranch, _ := git.ResolveCurrentBranch(cwd)
+	activeBranch, err := git.ResolveCurrentBranch(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to resolve active Git branch: %v\n", err)
+		os.Exit(1)
+	}
 	sanitizedActive := git.SanitizeBranchName(activeBranch)
 
 	localBranches, err := git.ResolveLocalBranches(cwd)

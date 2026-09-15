@@ -267,19 +267,38 @@ func TestRunPruneGitResolutionFailureHelper(t *testing.T) {
 	runPrune(os.Getenv("BRANCHBASE_PRUNE_DIR"), true, false)
 }
 
-func TestRunPruneFailsWhenLocalBranchesCannotBeResolved(t *testing.T) {
+func TestRunPruneFailsWhenActiveBranchCannotBeResolved(t *testing.T) {
 	dir := t.TempDir()
 	writePruneSQLiteConfig(t, dir)
 
+	// Case 1: No .git directory at all
 	output, exitCode := runPruneFailureHelper(t, dir)
 	if exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", exitCode, output)
 	}
-	if !strings.Contains(output, "Failed to resolve local Git branches") {
-		t.Fatalf("missing local branch resolution error:\n%s", output)
+	if !strings.Contains(output, "Failed to resolve active Git branch") {
+		t.Fatalf("missing active branch resolution error:\n%s", output)
 	}
 	if strings.Contains(output, "All branch databases are up to date") {
 		t.Fatalf("prune reported a false success after Git resolution failed:\n%s", output)
+	}
+
+	// Case 2: Detached HEAD state
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	// Write 40-character raw commit hash representing detached HEAD
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("0123456789abcdef0123456789abcdef01234567\n"), 0644); err != nil {
+		t.Fatalf("write detached HEAD: %v", err)
+	}
+
+	outputDetached, exitCodeDetached := runPruneFailureHelper(t, dir)
+	if exitCodeDetached != 1 {
+		t.Fatalf("detached HEAD exit code = %d, want 1\noutput:\n%s", exitCodeDetached, outputDetached)
+	}
+	if !strings.Contains(outputDetached, "Failed to resolve active Git branch") {
+		t.Fatalf("missing active branch resolution error for detached HEAD:\n%s", outputDetached)
 	}
 }
 
