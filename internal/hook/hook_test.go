@@ -92,3 +92,32 @@ func TestUninstallHooksCorruptedMarkers(t *testing.T) {
 		t.Fatalf("hook file was modified despite corruption")
 	}
 }
+
+func TestInstallHooksEnsuresExecutablePermission(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	gitHooksDir := filepath.Join(tempDir, ".git", "hooks")
+	if err := os.MkdirAll(gitHooksDir, 0755); err != nil {
+		t.Fatalf("mkdir .git/hooks: %v", err)
+	}
+
+	// Pre-create post-checkout with 0644 (non-executable)
+	preExistingHook := filepath.Join(gitHooksDir, "post-checkout")
+	if err := os.WriteFile(preExistingHook, []byte("#!/bin/sh\necho custom\n"), 0644); err != nil {
+		t.Fatalf("write pre-existing hook: %v", err)
+	}
+
+	if err := InstallHooks(tempDir); err != nil {
+		t.Fatalf("InstallHooks failed: %v", err)
+	}
+
+	fi, err := os.Stat(preExistingHook)
+	if err != nil {
+		t.Fatalf("stat hook failed: %v", err)
+	}
+
+	if !strings.Contains(string(fi.Name()), "post-checkout") {
+		t.Fatalf("unexpected hook file name: %s", fi.Name())
+	}
+}
