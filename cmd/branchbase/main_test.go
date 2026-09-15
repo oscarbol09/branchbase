@@ -40,8 +40,8 @@ func TestDriverParamsForConfig(t *testing.T) {
 				if got := params["max_open_conns"]; got != 1 {
 					t.Fatalf("max_open_conns = %v, want 1", got)
 				}
-				if got := params["max_idle_conns"]; got != 0 {
-					t.Fatalf("max_idle_conns = %v, want 0", got)
+				if got := params["max_idle_conns"]; got != 1 {
+					t.Fatalf("max_idle_conns = %v, want 1", got)
 				}
 				return
 			}

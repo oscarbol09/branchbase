@@ -59,6 +59,17 @@ func TestPoolConfigFromParams(t *testing.T) {
 		"lightweight": {
 			params: map[string]interface{}{
 				"max_open_conns": 1,
+				"max_idle_conns": 1,
+			},
+			want: PoolConfig{
+				MaxOpenConns:    1,
+				MaxIdleConns:    1,
+				ConnMaxLifetime: 5 * time.Minute,
+			},
+		},
+		"zero idle conns": {
+			params: map[string]interface{}{
+				"max_open_conns": 1,
 				"max_idle_conns": 0,
 			},
 			want: PoolConfig{

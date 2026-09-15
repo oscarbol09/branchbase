@@ -87,6 +87,14 @@ type Driver interface {
 4. Register the driver via `driver.Register("<engine>", factory)` in `init()`.
 5. Open a Pull Request!
 
+> [!NOTE]
+> **Optional Connection Pool Parameters:**  
+> The factory function `func(params map[string]interface{}) (Driver, error)` receives configuration values from `.branchbase.yaml`. For short-lived operations (such as `hook-trigger`), BranchBase passes lightweight pool limits into `params`:
+> - `max_open_conns` (`int`): Maximum concurrent open database connections (e.g., `1` in lightweight mode).
+> - `max_idle_conns` (`int`): Maximum idle connections retained in the pool (e.g., `1` in lightweight mode).  
+> 
+> Database drivers supporting connection pooling should inspect these parameters and apply them to their connection pool.
+
 ---
 
 ## 📋 Pull Request Guidelines

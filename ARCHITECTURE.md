@@ -81,6 +81,8 @@ CREATE DATABASE "myapp_dev_feature_billing" TEMPLATE "myapp_dev_main";
 ```
 Idempotency is preserved by gracefully handling PostgreSQL SQLSTATE `42P04` (`duplicate_database`).
 
+* **Connection Pooling:** Uses standard `database/sql` connection pooling (`25` open / `5` idle connections by default). For short-lived operations such as `branchbase hook-trigger`, a lightweight single-connection profile (`1` open / `1` idle connection) is used to minimize runtime allocation overhead while avoiding TCP re-handshakes across sequential queries.
+
 #### SQLite Implementation:
 For SQLite, BranchBase utilizes filesystem-level **Copy-on-Write (CoW)** snapshots with `.db-wal` and `.db-shm` replication:
 * **macOS (APFS):** High-throughput cloning.
