@@ -28,17 +28,9 @@ strategy:
   # Automatically snapshot/create branch database on git checkout
   snapshot_on_switch: true
 
-  # Template source database to branch from (default: uses default_branch database)
-  clone_source: "base_database"
-
   # Auto prune ephemeral databases when corresponding Git branch is merged
   auto_prune_merged: false
 
   # Maximum number of branch databases allowed simultaneously (safeguard against disk exhaustion)
   max_branch_databases: 10
 
-# Hook configuration
-hooks:
-  auto_install: true
-  post_checkout: true
-  post_merge: true
