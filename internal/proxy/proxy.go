@@ -104,12 +104,15 @@ func (s *Server) ensureBranchExists(targetBranch, defaultBranch string) error {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	fastCtx, fastCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer fastCancel()
 
 	// Fast path: check existence without lock
-	exists, err := s.drv.BranchExists(ctx, targetBranch)
-	if err == nil && exists {
+	exists, err := s.drv.BranchExists(fastCtx, targetBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check branch existence for %q: %w", targetBranch, err)
+	}
+	if exists {
 		return nil
 	}
 
@@ -118,15 +121,33 @@ func (s *Server) ensureBranchExists(targetBranch, defaultBranch string) error {
 		unlock := s.keyLock.Lock(targetBranch)
 		defer unlock()
 
+		// Dedicated timeout once lock is acquired to prevent starvation under contention
+		provCtx, provCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer provCancel()
+
 		// Re-check existence under lock
-		exists, err = s.drv.BranchExists(ctx, targetBranch)
-		if err == nil && exists {
+		exists, err = s.drv.BranchExists(provCtx, targetBranch)
+		if err != nil {
+			return fmt.Errorf("failed to check branch existence under lock for %q: %w", targetBranch, err)
+		}
+		if exists {
 			return nil
 		}
+
+		log.Printf("[BranchBase Proxy] 🪄 JIT provisioning database for branch %q from %q...", targetBranch, defaultBranch)
+		if err := s.drv.CreateBranch(provCtx, defaultBranch, targetBranch); err != nil {
+			return fmt.Errorf("failed to JIT provision branch %q: %w", targetBranch, err)
+		}
+		log.Printf("[BranchBase Proxy] ✅ JIT provisioned database for branch %q", targetBranch)
+		return nil
 	}
 
+	// Fallback if keyLock is nil (e.g. in tests)
+	provCtx, provCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer provCancel()
+
 	log.Printf("[BranchBase Proxy] 🪄 JIT provisioning database for branch %q from %q...", targetBranch, defaultBranch)
-	if err := s.drv.CreateBranch(ctx, defaultBranch, targetBranch); err != nil {
+	if err := s.drv.CreateBranch(provCtx, defaultBranch, targetBranch); err != nil {
 		return fmt.Errorf("failed to JIT provision branch %q: %w", targetBranch, err)
 	}
 	log.Printf("[BranchBase Proxy] ✅ JIT provisioned database for branch %q", targetBranch)

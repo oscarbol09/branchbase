@@ -68,7 +68,12 @@ func installSingleHook(hookPath, hookName string) error {
 		finalContent = existingContent + "\n" + snippet
 	}
 
-	return os.WriteFile(hookPath, []byte(finalContent), 0755)
+	if err := os.WriteFile(hookPath, []byte(finalContent), 0755); err != nil {
+		return err
+	}
+	// Explicitly set executable bit: on Unix, os.WriteFile does not alter permissions on existing files
+	_ = os.Chmod(hookPath, 0755)
+	return nil
 }
 
 // UninstallHooks cleanly removes BranchBase blocks from .git/hooks
@@ -106,7 +111,9 @@ func UninstallHooks(repoPath string) error {
 		if cleaned == "#!/bin/sh" || cleaned == "" {
 			_ = os.Remove(hookFile)
 		} else {
-			_ = os.WriteFile(hookFile, []byte(cleaned+"\n"), 0755)
+			if err := os.WriteFile(hookFile, []byte(cleaned+"\n"), 0755); err == nil {
+				_ = os.Chmod(hookFile, 0755)
+			}
 		}
 	}
 

@@ -274,6 +274,23 @@ func TestProxyEnsureBranchExists_AlreadyExists(t *testing.T) {
 	}
 }
 
+func TestProxyEnsureBranchExists_ErrorPropagation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	drv := newMockDriver()
+	expectedErr := fmt.Errorf("simulated database disk failure")
+	drv.existsErr = expectedErr
+
+	srv := NewServer(&cfg, t.TempDir(), drv)
+	err := srv.ensureBranchExists("feature-err", "main")
+	if err == nil {
+		t.Fatal("expected error from ensureBranchExists when BranchExists fails, got nil")
+	}
+
+	if drv.createCalls != 0 {
+		t.Fatalf("expected 0 CreateBranch calls when BranchExists fails, got %d", drv.createCalls)
+	}
+}
+
 func TestProxyEnsureBranchExists_ProvisionsWhenMissing(t *testing.T) {
 	cfg := config.DefaultConfig()
 	drv := newMockDriver()

@@ -99,7 +99,8 @@ To ensure developers **never have to touch `.env`** or restart their dev servers
 3. **On-Demand (JIT) Branch Provisioning:**
    - If incoming connection targets an unprovisioned branch, `Server.ensureBranchExists()` provisions the database on the fly from the default branch.
    - Guarded by a refcounted `keyedMutex` using **double-checked locking**: fast-path check avoids locking for existing databases; slow-path lock serializes concurrent incoming connections for the same missing branch.
-   - Strict 5-second `context.WithTimeout` prevents connection starvation.
+   - Strictly validates and propagates branch existence errors on both fast and slow paths, preventing accidental database overwrites.
+   - Allocates dedicated 5-second timeout contexts once the lock is acquired, ensuring provisioning operations never time out prematurely under high lock contention.
 4. **Wire-Protocol Rewriting:**
    - Intercepts PostgreSQL `StartupMessage`, rewrites database parameter to branch database (`myapp_dev_feature_billing`), responds to SSL negotiation, and streams bidirectionally with zero overhead.
 
@@ -140,7 +141,7 @@ Over time, working on dozens of feature branches can accumulate disk space.
 
 * **Command:** `branchbase prune [--dry-run] [--force]`
 * **Algorithm:**
-  1. Inspects local and merged Git branches via `git.ResolveMergedBranches()` and `git.ResolveLocalBranches()`.
+  1. Inspects active, local, and merged Git branches via `git.ResolveCurrentBranch()`, `git.ResolveMergedBranches()`, and `git.ResolveLocalBranches()`. Aborts immediately if active branch resolution fails to safeguard the active database.
   2. Identifies all databases matching the pattern `<base_db>_<branch>`, excluding protected base databases and the currently active branch.
   3. If `--dry-run` is provided, previews candidates and freed disk space without deleting.
   4. Prompts interactive confirmation (`[y/N]`) before deletion unless `--force` / `-f` is specified.
