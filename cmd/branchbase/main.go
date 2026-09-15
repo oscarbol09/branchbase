@@ -289,7 +289,7 @@ func driverParamsForConfig(cfg *config.Config, lightweight bool) map[string]inte
 
 	if lightweight {
 		params["max_open_conns"] = 1
-		params["max_idle_conns"] = 0
+		params["max_idle_conns"] = 1
 	}
 
 	// For SQLite
