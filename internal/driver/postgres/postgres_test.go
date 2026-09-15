@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/branchbase/branchbase/internal/driver"
@@ -39,6 +40,48 @@ func TestFormatDBName(t *testing.T) {
 			got := d.formatDBName(tt.branch)
 			if got != tt.expected {
 				t.Errorf("formatDBName(%q) = %q; want %q", tt.branch, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPoolConfigFromParams(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		params map[string]interface{}
+		want   PoolConfig
+	}{
+		"defaults": {
+			params: map[string]interface{}{},
+			want:   defaultPoolConfig,
+		},
+		"lightweight": {
+			params: map[string]interface{}{
+				"max_open_conns": 1,
+				"max_idle_conns": 0,
+			},
+			want: PoolConfig{
+				MaxOpenConns:    1,
+				MaxIdleConns:    0,
+				ConnMaxLifetime: 5 * time.Minute,
+			},
+		},
+		"invalid limits use defaults": {
+			params: map[string]interface{}{
+				"max_open_conns": 0,
+				"max_idle_conns": -1,
+			},
+			want: defaultPoolConfig,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := poolConfigFromParams(tt.params); got != tt.want {
+				t.Fatalf("poolConfigFromParams() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}

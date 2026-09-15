@@ -277,12 +277,8 @@ func formatBytes(bytes int64) string {
 	}
 }
 
-// getDriverForConfig resolves and initializes a database driver instance from configuration.
-func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("configuration is nil")
-	}
-
+// driverParamsForConfig converts application configuration into driver parameters.
+func driverParamsForConfig(cfg *config.Config, lightweight bool) map[string]interface{} {
 	params := make(map[string]interface{})
 	params["host"] = cfg.Connection.Host
 	params["port"] = cfg.Connection.Port
@@ -291,6 +287,11 @@ func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
 	params["base_database"] = cfg.Connection.BaseDatabase
 	params["sslmode"] = "disable"
 
+	if lightweight {
+		params["max_open_conns"] = 1
+		params["max_idle_conns"] = 0
+	}
+
 	// For SQLite
 	if cfg.Connection.Path != "" {
 		params["path"] = cfg.Connection.Path
@@ -298,12 +299,21 @@ func getDriverForConfig(cfg *config.Config) (driver.Driver, error) {
 		params["path"] = cfg.Connection.BaseDatabase
 	}
 
+	return params
+}
+
+// getDriverForConfig resolves and initializes a database driver instance from configuration.
+func getDriverForConfig(cfg *config.Config, lightweight bool) (driver.Driver, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is nil")
+	}
+
 	drvName := cfg.Driver
 	if drvName == "" {
 		drvName = "postgres"
 	}
 
-	return driver.GetDriver(drvName, params)
+	return driver.GetDriver(drvName, driverParamsForConfig(cfg, lightweight))
 }
 
 func runSwitch(cwd, targetBranch string, noCreate bool) {
@@ -329,7 +339,7 @@ func runSwitch(cwd, targetBranch string, noCreate bool) {
 		return
 	}
 
-	drv, err := getDriverForConfig(cfg)
+	drv, err := getDriverForConfig(cfg, false)
 	if err != nil {
 		fmt.Printf("⚠️  Could not connect to database driver: %v\n", err)
 		fmt.Println("✅ Target resolved. Database provisioning skipped.")
@@ -370,7 +380,7 @@ func runProxy(cwd string) {
 		cfg = &defaultCfg
 	}
 
-	drv, err := getDriverForConfig(cfg)
+	drv, err := getDriverForConfig(cfg, false)
 	if err != nil {
 		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Driver, err)
 	} else {
@@ -404,7 +414,7 @@ func runList(cwd string, jsonOutput bool) {
 		os.Exit(1)
 	}
 
-	drv, err := getDriverForConfig(cfg)
+	drv, err := getDriverForConfig(cfg, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing driver %s: %v\n", cfg.Driver, err)
 		os.Exit(1)
@@ -487,7 +497,7 @@ func runPrune(cwd string, dryRun, force bool) {
 		os.Exit(1)
 	}
 
-	drv, err := getDriverForConfig(cfg)
+	drv, err := getDriverForConfig(cfg, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing driver %s: %v\n", cfg.Driver, err)
 		os.Exit(1)
@@ -654,7 +664,7 @@ func runHookTrigger(cwd string, args []string) {
 		return
 	}
 
-	drv, err := getDriverForConfig(cfg)
+	drv, err := getDriverForConfig(cfg, true)
 	if err != nil {
 		logHookError(cwd, fmt.Sprintf("failed to get driver for config: %v", err))
 		return

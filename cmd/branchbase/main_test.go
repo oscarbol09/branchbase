@@ -20,6 +20,42 @@ func TestStatusDatabaseNameNilConfig(t *testing.T) {
 	}
 }
 
+func TestDriverParamsForConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	for name, lightweight := range map[string]bool{
+		"default":     false,
+		"lightweight": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			params := driverParamsForConfig(&cfg, lightweight)
+			if got := params["host"]; got != cfg.Connection.Host {
+				t.Fatalf("host = %v, want %v", got, cfg.Connection.Host)
+			}
+
+			if lightweight {
+				if got := params["max_open_conns"]; got != 1 {
+					t.Fatalf("max_open_conns = %v, want 1", got)
+				}
+				if got := params["max_idle_conns"]; got != 0 {
+					t.Fatalf("max_idle_conns = %v, want 0", got)
+				}
+				return
+			}
+
+			if _, ok := params["max_open_conns"]; ok {
+				t.Fatal("default params must not override max_open_conns")
+			}
+			if _, ok := params["max_idle_conns"]; ok {
+				t.Fatal("default params must not override max_idle_conns")
+			}
+		})
+	}
+}
+
 func TestStatusDatabaseNameUsesConfig(t *testing.T) {
 	t.Parallel()
 	cfg := config.DefaultConfig()

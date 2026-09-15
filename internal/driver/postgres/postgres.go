@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"errors"
-	"github.com/lib/pq"
 	"github.com/branchbase/branchbase/internal/git"
+	"github.com/lib/pq"
 
 	"github.com/branchbase/branchbase/internal/driver"
 )
@@ -23,6 +23,19 @@ type Config struct {
 	Password     string
 	BaseDatabase string
 	SSLMode      string
+}
+
+// PoolConfig controls the database connection pool used by a PostgresDriver.
+type PoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+var defaultPoolConfig = PoolConfig{
+	MaxOpenConns:    25,
+	MaxIdleConns:    5,
+	ConnMaxLifetime: 5 * time.Minute,
 }
 
 // DSN returns the PostgreSQL connection URL string for the pgx driver
@@ -98,12 +111,30 @@ func init() {
 			cfg.SSLMode = ssl
 		}
 
-		return New(cfg)
+		return NewWithPoolConfig(cfg, poolConfigFromParams(params))
 	})
+}
+
+func poolConfigFromParams(params map[string]interface{}) PoolConfig {
+	poolConfig := defaultPoolConfig
+
+	if maxOpenConns, ok := params["max_open_conns"].(int); ok && maxOpenConns > 0 {
+		poolConfig.MaxOpenConns = maxOpenConns
+	}
+	if maxIdleConns, ok := params["max_idle_conns"].(int); ok && maxIdleConns >= 0 {
+		poolConfig.MaxIdleConns = maxIdleConns
+	}
+
+	return poolConfig
 }
 
 // New creates a new PostgresDriver instance and initializes the connection pool
 func New(cfg Config) (*PostgresDriver, error) {
+	return NewWithPoolConfig(cfg, defaultPoolConfig)
+}
+
+// NewWithPoolConfig creates a PostgresDriver with the supplied connection pool settings.
+func NewWithPoolConfig(cfg Config, poolConfig PoolConfig) (*PostgresDriver, error) {
 	if cfg.SSLMode == "" {
 		cfg.SSLMode = "disable"
 	}
@@ -113,9 +144,9 @@ func New(cfg Config) (*PostgresDriver, error) {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(poolConfig.MaxOpenConns)
+	db.SetMaxIdleConns(poolConfig.MaxIdleConns)
+	db.SetConnMaxLifetime(poolConfig.ConnMaxLifetime)
 
 	return &PostgresDriver{
 		cfg: cfg,
