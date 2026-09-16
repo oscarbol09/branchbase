@@ -54,8 +54,10 @@ This document outlines the milestones and engineering priorities for **BranchBas
 - [ ] **Docker Compose Native Integration:**
   - Auto-detection of `services.*.ports` and `environment` in `docker-compose.yml`.
   - One-click setup for existing Dockerized teams.
-- [ ] **Multi-Agent / Worktree Support:**
-  - Native support for `git worktree` so AI coding agents and human developers can run in parallel without port or DB collision.
+- [ ] **Multi-Agent / Parallel Worktree Isolation:**
+  - [x] Native Git worktree detection (`ResolveCurrentBranch`) and hook lifecycle (`InstallHooks`, `UninstallHooks`, `AreHooksInstalled`) across linked worktrees.
+  - [ ] Multi-proxy port allocation and socket isolation so AI coding agents and human developers can run in parallel without port or DB collision.
+
 
 ---
 
