@@ -190,6 +190,9 @@ func TestTUIRenderView(t *testing.T) {
 	if !strings.Contains(view, "Protected") {
 		t.Errorf("missing Protected status indicator:\n%s", view)
 	}
+	if !strings.Contains(view, "@oscarbol09") {
+		t.Errorf("missing author branding in RenderView:\n%s", view)
+	}
 }
 
 func TestTUIHandleKeyActions(t *testing.T) {

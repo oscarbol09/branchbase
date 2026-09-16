@@ -232,6 +232,7 @@ func (m *DashboardModel) RenderView() string {
 	}
 	b.WriteString(Bold + flashColor + "  ℹ " + m.FlashMessage + Reset + "\n")
 	b.WriteString(Dim + "  [↑/k] Up  [↓/j] Down  [Enter/s] Switch  [r] Refresh  [q] Quit" + Reset + "\n")
+	b.WriteString(Dim + "  BranchBase • Built with 💚 by @oscarbol09 (github.com/oscarbol09/branchbase)" + Reset + "\n")
 
 	return b.String()
 }
