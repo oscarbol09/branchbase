@@ -101,8 +101,11 @@ To ensure developers **never have to touch `.env`** or restart their dev servers
    - Guarded by a refcounted `keyedMutex` using **double-checked locking**: fast-path check avoids locking for existing databases; slow-path lock serializes concurrent incoming connections for the same missing branch.
    - Strictly validates and propagates branch existence errors on both fast and slow paths, preventing accidental database overwrites.
    - Allocates dedicated 5-second timeout contexts once the lock is acquired, ensuring provisioning operations never time out prematurely under high lock contention.
-4. **Wire-Protocol Rewriting:**
+4. **Wire-Protocol Rewriting & Error Reporting:**
    - Intercepts PostgreSQL `StartupMessage`, rewrites database parameter to branch database (`myapp_dev_feature_billing`), responds to SSL negotiation, and streams bidirectionally with zero overhead.
+   - **Fail-Closed Invariant:** If database rewriting fails (e.g. identifier exceeds 63 bytes or invalid characters), the connection is immediately aborted rather than forwarded to the default database.
+   - **Wire Error Diagnostic:** If JIT provisioning, backend connection, or database rewriting fails, the proxy builds and writes a standard PostgreSQL `ErrorResponse` (`'E'`) packet (with severity `FATAL`, SQLSTATE code, and descriptive error message) before closing the client socket, ensuring developers receive clear diagnostics in CLI tools (`psql`) and ORMs (`Prisma`, `dbt`).
+
 
 ---
 

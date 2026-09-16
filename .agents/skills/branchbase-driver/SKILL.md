@@ -69,7 +69,8 @@ type Driver interface {
 
 ## 4. Verification Checklist
 
-- [ ] All methods take `context.Context` and handle cancellation.
-- [ ] Safe quoting of SQL identifiers (e.g. `fmt.Sprintf("CREATE DATABASE %q", dbName)`).
+- [ ] Safe quoting of SQL identifiers (e.g. `pq.QuoteIdentifier(dbName)` or dialect-specific delimiter escaping).
+- [ ] Safe escaping of wildcards (`_`, `%`) in `LIKE` queries (`ESCAPE '\'`).
 - [ ] Base database (`main`) is protected and can never be deleted by `DeleteBranch`.
-- [ ] Unit tests added with table-driven test cases.
+- [ ] Unit tests added with table-driven test cases and hermetic mocks.
+

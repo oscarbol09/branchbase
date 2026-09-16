@@ -10,7 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Standard SQL identifier quoting via `pq.QuoteIdentifier` in `CreateBranch` and `DeleteBranch`, preventing quoting discrepancies in PostgreSQL (#71).
+- Sane wildcard escaping (`escapeLikeWildcards`) with `ESCAPE '\'` in PostgreSQL `ListBranches` query, eliminating false-positive matches for databases with underscores (#71).
+- Strict CI/CD security quality gate enforcement in `govulncheck` by removing `continue-on-error` (#71).
 - Strict target database identifier validation and sanitization in `pgwire.RewriteDatabase()`, enforcing standard PostgreSQL naming conventions, a 63-byte limit, and rejecting embedded null bytes (#41).
+
+### Added
+- PostgreSQL wire protocol `ErrorResponse` (`'E'`) packet generator (`pgwire.BuildErrorResponse`) providing detailed client-side diagnostics (Severity, SQLSTATE, message) upon JIT provisioning or routing failures (#71).
+- Transparent Git worktree and submodule support in hook installer (`internal/hook/hook.go`) resolving pointer files (`gitdir: ...`) and `commondir` (#71).
+
+### Performance
+- Single-file checkout event filtering in `branchbase hook-trigger` (`flag == "0"` from Git `post-checkout`), skipping redundant database driver connections and queries when not switching branches (#71).
+
+### Fixed
+- Pinned official stable GitHub Actions in CI/CD pipeline (`actions/checkout@v4`, `actions/setup-go@v5`, `golangci/golangci-lint-action@v6`) (#71).
+
 
 ### Fixed
 - PostgreSQL driver connection pool initialization with `lib/pq` and `database/sql`, supporting SQLSTATE `42P04` (`duplicate_database`) idempotent branching and hermetic `sqlmock` tests (#24).
