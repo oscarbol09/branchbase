@@ -33,7 +33,7 @@ Usage:
   branchbase <command> [arguments]
 
 Core Commands:
-  init                     Initialize BranchBase in current repository (.branchbase.json & Git hooks)
+  init [--skip-hooks]      Initialize BranchBase in current repository (.branchbase.json & Git hooks)
   status [--json]          Show current Git branch, target database, and proxy status
   proxy                    Start the local transparent TCP routing proxy
   switch <name> [--no-create] Manually switch or provision an isolated database for a branch
@@ -74,7 +74,15 @@ func main() {
 		printUsage()
 
 	case "init":
-		runInit(cwd)
+		skipHooks := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--skip-hooks" || arg == "--no-hooks" {
+				skipHooks = true
+			}
+		}
+		if err := runInit(cwd, skipHooks); err != nil {
+			os.Exit(1)
+		}
 
 	case "status":
 		jsonOutput := false
@@ -150,7 +158,7 @@ func main() {
 	}
 }
 
-func runInit(cwd string) {
+func runInit(cwd string, skipHooks bool) error {
 	configPath := filepath.Join(cwd, ".branchbase.json")
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Println("⚠️  BranchBase is already initialized (.branchbase.json exists).")
@@ -165,22 +173,32 @@ func runInit(cwd string) {
 
 		if err := cfg.SaveJSON(configPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to write configuration: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Println("✅ Initialized BranchBase configuration in .branchbase.json")
+	}
+
+	if skipHooks {
+		fmt.Println("⚪ Git hooks installation skipped (--skip-hooks specified).")
+		fmt.Println("\n✨ Setup complete!")
+		fmt.Println("👉 Edit .branchbase.json to configure your database connection.")
+		fmt.Println("👉 Run 'branchbase proxy' to start routing application queries!")
+		return nil
 	}
 
 	// Install Git hooks
 	if err := hook.InstallHooks(cwd); err != nil {
 		fmt.Printf("⚠️  Could not automatically install Git hooks: %v\n", err)
 		fmt.Println("👉 Run 'branchbase hooks install' when your Git repository is ready.")
-	} else {
-		fmt.Println("🎣 Installed BranchBase Git hooks in .git/hooks/ (post-checkout, post-merge)")
+		fmt.Println("\n⚠️  Partial setup completed (Git hooks not installed).")
+		return err
 	}
 
+	fmt.Println("🎣 Installed BranchBase Git hooks in .git/hooks/ (post-checkout, post-merge)")
 	fmt.Println("\n✨ Setup complete!")
 	fmt.Println("👉 Edit .branchbase.json to configure your database connection.")
 	fmt.Println("👉 Run 'branchbase proxy' to start routing application queries!")
+	return nil
 }
 
 // statusOutput is the JSON shape for `branchbase status --json`.

@@ -176,3 +176,15 @@ func TestInstallHooksWorktree(t *testing.T) {
 	}
 }
 
+func TestScriptTemplateNohupProtection(t *testing.T) {
+	t.Parallel()
+
+	template := ScriptTemplate("post-checkout")
+	if !strings.Contains(template, "nohup branchbase hook-trigger post-checkout") {
+		t.Errorf("expected ScriptTemplate to wrap command in nohup, got:\n%s", template)
+	}
+	if !strings.Contains(template, "(nohup") {
+		t.Errorf("expected ScriptTemplate to use detached subshell (nohup ...), got:\n%s", template)
+	}
+}
+

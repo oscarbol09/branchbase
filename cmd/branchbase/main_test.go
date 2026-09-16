@@ -493,7 +493,7 @@ services:
 		t.Fatalf("failed to write compose file: %v", err)
 	}
 
-	runInit(dir)
+	_ = runInit(dir, true)
 
 	cfgPath := filepath.Join(dir, ".branchbase.json")
 	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
@@ -518,3 +518,56 @@ services:
 		t.Errorf("loaded.Connection.BaseDatabase = %q, want compose_app_dev", loaded.Connection.BaseDatabase)
 	}
 }
+
+func TestRunInitSkipHooks(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	err := runInit(dir, true)
+	if err != nil {
+		t.Fatalf("expected runInit with skipHooks=true to succeed, got: %v", err)
+	}
+
+	cfgPath := filepath.Join(dir, ".branchbase.json")
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		t.Fatalf("expected .branchbase.json to be created")
+	}
+}
+
+func TestRunInitPartialFailureOutsideGitRepo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	err := runInit(dir, false)
+	if err == nil {
+		t.Fatalf("expected runInit outside git repo with skipHooks=false to return error")
+	}
+
+	// Configuration file should still exist (partial initialization)
+	cfgPath := filepath.Join(dir, ".branchbase.json")
+	if _, statErr := os.Stat(cfgPath); statErr != nil {
+		t.Fatalf("expected .branchbase.json to exist despite hook installation failure: %v", statErr)
+	}
+}
+
+func TestRunInitFullSuccessInGitRepo(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	err := runInit(dir, false)
+	if err != nil {
+		t.Fatalf("expected runInit inside git repo to succeed, got: %v", err)
+	}
+
+	cfgPath := filepath.Join(dir, ".branchbase.json")
+	if _, statErr := os.Stat(cfgPath); statErr != nil {
+		t.Fatalf("expected .branchbase.json to exist: %v", statErr)
+	}
+
+	hookFile := filepath.Join(dir, ".git", "hooks", "post-checkout")
+	if _, statErr := os.Stat(hookFile); statErr != nil {
+		t.Fatalf("expected post-checkout hook to be installed: %v", statErr)
+	}
+}
+
