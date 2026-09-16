@@ -85,9 +85,18 @@ Idempotency is preserved by gracefully handling PostgreSQL SQLSTATE `42P04` (`du
 
 #### SQLite Implementation:
 For SQLite, BranchBase utilizes filesystem-level **Copy-on-Write (CoW)** snapshots with `.db-wal` and `.db-shm` replication:
-* **macOS (APFS):** High-throughput cloning.
+* **macOS (APFS):** Native `clonefile(2)` syscall for instant Copy-on-Write snapshots, with chunked copy fallback on unsupported filesystems.
 * **Linux (Btrfs / XFS):** `ioctl(FICLONE)` reflink copying.
 * **Windows & Fallback:** Buffered stream copy with full file sync.
+
+#### MySQL / MariaDB Implementation:
+MySQL does not support native `TEMPLATE` cloning. BranchBase implements schema-level replication:
+1. **Schema Creation:** `CREATE DATABASE <target>` with backtick-quoted identifiers (`QuoteIdentifier`).
+2. **Table Cloning:** Iterates `information_schema.TABLES` and executes `CREATE TABLE <target>.<table> LIKE <source>.<table>` for each table.
+3. **Data Replication:** `INSERT INTO <target>.<table> SELECT * FROM <source>.<table>` to copy rows.
+4. **Storage Metrics:** Queries `information_schema.TABLES` for `DATA_LENGTH + INDEX_LENGTH` to report branch database sizes.
+
+* **Connection Pooling:** Uses standard `database/sql` connection pooling (`25` open / `5` idle connections by default), matching the PostgreSQL driver profile.
 
 ---
 
@@ -105,6 +114,13 @@ To ensure developers **never have to touch `.env`** or restart their dev servers
    - Intercepts PostgreSQL `StartupMessage`, rewrites database parameter to branch database (`myapp_dev_feature_billing`), responds to SSL negotiation, and streams bidirectionally with zero overhead.
    - **Fail-Closed Invariant:** If database rewriting fails (e.g. identifier exceeds 63 bytes or invalid characters), the connection is immediately aborted rather than forwarded to the default database.
    - **Wire Error Diagnostic:** If JIT provisioning, backend connection, or database rewriting fails, the proxy builds and writes a standard PostgreSQL `ErrorResponse` (`'E'`) packet (with severity `FATAL`, SQLSTATE code, and descriptive error message) before closing the client socket, ensuring developers receive clear diagnostics in CLI tools (`psql`) and ORMs (`Prisma`, `dbt`).
+5. **TLS/SSL Client Negotiation:**
+   - Supports clients connecting with `sslmode=require` by generating self-signed ECDSA development certificates at startup.
+   - Transparently upgrades client connections to TLS when the PostgreSQL `SSLRequest` packet is received.
+6. **UNIX Domain Socket Support:**
+   - Both the listener and backend target can be configured as UNIX domain sockets (e.g., `/tmp/.s.PGSQL.5432`), eliminating TCP overhead for local connections.
+7. **Graceful Connection Draining:**
+   - On `Stop()`, the proxy tracks all active connections (`activeConns map[net.Conn]struct{}`) and waits up to `drainTimeout` for in-flight queries to complete before force-closing remaining connections.
 
 
 ---

@@ -78,16 +78,17 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 
 | Command | What it does |
 | :--- | :--- |
-| `branchbase init` | Interactively inspect repository and generate `.branchbase.json` |
+| `branchbase init [--skip-hooks]` | Interactively inspect repository and generate `.branchbase.json` (optionally skip hook installation) |
 | `branchbase proxy` | Start the local transparent TCP routing proxy (default port: `5432`) with JIT provisioning |
 | `branchbase status [--json]` | Display active Git branch, sanitized name, target DB, and proxy status |
 | `branchbase list [--json]` | List all active and ephemeral databases managed by BranchBase with size and status |
 | `branchbase switch <branch> [--no-create]` | Manually switch or provision an isolated database for a specific branch |
-| `branchbase tui` / `dashboard` | Launch interactive terminal UI dashboard with keyboard navigation and branch switching |
+| `branchbase tui` / `dashboard` / `ui` | Launch interactive terminal UI dashboard with keyboard navigation and branch switching |
 | `branchbase hooks install` | Install automated `post-checkout` and `post-merge` hooks into `.git/hooks/` |
+| `branchbase hooks uninstall` | Remove BranchBase hooks from `.git/hooks/` |
 | `branchbase hooks status` | Inspect Git hooks installation and activity status |
 | `branchbase prune [--dry-run] [--force]` | Reconcile merged/orphaned branches and safely delete corresponding databases |
-| `branchbase version` | Print the current BranchBase version |
+| `branchbase version` | Print the current BranchBase version, author, and repository URL |
 
 ---
 

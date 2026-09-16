@@ -8,7 +8,8 @@ Security fixes are applied to the active development branch (`main`) and release
 
 | Version | Supported |
 | :--- | :--- |
-| `0.1.x` | ✅ Yes |
+| `0.3.x` | ✅ Yes |
+| `0.1.x` | ❌ No (Superseded) |
 | `< 0.1.0` | ❌ No |
 
 ---

@@ -44,9 +44,12 @@ type Driver interface {
 - **Pre-requisite:** Issue `PRAGMA wal_checkpoint(TRUNCATE);` before taking a snapshot so the `.db-wal` file is synced into the primary `.db` file.
 
 ### C. MySQL / MariaDB
-- **Mechanism:** 
-  - For small databases: `mysqldump --no-data` + pipe into target database, followed by data insert.
-  - For Docker volume setups: volume snapshot via Docker API.
+- **Mechanism:** Schema-level replication via pure Go driver:
+  1. `CREATE DATABASE <target>` with backtick-quoted identifiers.
+  2. Iterate `information_schema.TABLES` and `CREATE TABLE <target>.<table> LIKE <source>.<table>` for each table.
+  3. `INSERT INTO <target>.<table> SELECT * FROM <source>.<table>` for data replication.
+- **Identifier Rules:** Uses `QuoteIdentifier()` with backtick escaping (`` ` ``→`` `` ``).
+- **Storage Metrics:** Queries `DATA_LENGTH + INDEX_LENGTH` from `information_schema.TABLES`.
 
 ---
 

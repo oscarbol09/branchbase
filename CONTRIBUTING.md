@@ -21,19 +21,25 @@ Each newcomer issue includes exact file pointers, reproduction steps, and expect
 Here are some high-impact areas where we need collaboration:
 
 1. **Database Drivers:**
-   - PostgreSQL Driver (`CREATE DATABASE ... TEMPLATE`).
-   - SQLite Driver (Reflink / APFS `clonefile` / Btrfs / XFS).
-   - MySQL / MariaDB Driver.
-   - MongoDB Driver.
+   - ✅ PostgreSQL Driver (`CREATE DATABASE ... TEMPLATE`) — *Implemented.*
+   - ✅ SQLite Driver (Reflink / APFS `clonefile` / Btrfs / XFS) — *Implemented.*
+   - ✅ MySQL / MariaDB Driver (`CREATE TABLE ... LIKE` schema cloning) — *Implemented.*
+   - 🔧 MongoDB Driver — *Open for contribution.*
+   - 🔧 CockroachDB / TiDB Driver — *Open for contribution.*
 2. **Transparent Proxy Engine:**
-   - Wire-protocol parsing for PostgreSQL `StartupMessage`.
-   - Wire-protocol parsing for MySQL Handshake.
+   - ✅ Wire-protocol parsing for PostgreSQL `StartupMessage` — *Implemented.*
+   - ✅ TLS/SSL negotiation (`sslmode=require`) — *Implemented.*
+   - ✅ UNIX domain socket support — *Implemented.*
+   - ✅ Graceful connection draining — *Implemented.*
+   - 🔧 Wire-protocol parsing for MySQL Handshake — *Open for contribution.*
 3. **CLI & Developer Experience:**
-   - Git hook installation & integration tests.
-   - Interactive TUI (Terminal UI) for managing and inspecting branch databases.
-   - Autocompletion scripts (bash, zsh, fish).
+   - ✅ Git hook installation & integration tests — *Implemented.*
+   - ✅ Interactive TUI (Terminal UI) dashboard — *Implemented.*
+   - 🔧 Autocompletion scripts (bash, zsh, fish) — *Open for contribution.*
+   - 🔧 `branchbase doctor` diagnostic command — *Open for contribution.*
 4. **Documentation & Guides:**
-   - Integration guides with popular ORMs: **Prisma**, **Drizzle**, **Django**, **Ruby on Rails**, **Alembic/SQLAlchemy**, **TypeORM**.
+   - ✅ Prisma ORM integration guide — *Implemented.*
+   - 🔧 Integration guides for: **Drizzle**, **Django**, **Ruby on Rails**, **Alembic/SQLAlchemy**, **TypeORM**.
 
 ---
 
