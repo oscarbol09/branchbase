@@ -26,10 +26,7 @@ func CloneFile(src, dst string) error {
 	// clonefile(src, dst, flags) is syscall 532 on Darwin / macOS
 	_, _, errno := syscall.Syscall(sysClonefile, uintptr(unsafe.Pointer(srcPtr)), uintptr(unsafe.Pointer(dstPtr)), 0)
 	if errno != 0 {
-		if errno == syscall.ENOTSUP || errno == syscall.ENOSYS || errno == syscall.EXDEV {
-			return copyFileChunked(src, dst)
-		}
-		return errno
+		return copyFileChunked(src, dst)
 	}
 	return nil
 }
