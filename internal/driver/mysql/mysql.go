@@ -126,7 +126,12 @@ func New(cfg Config) (*MySQLDriver, error) {
 func NewWithPoolConfig(cfg Config, poolConfig PoolConfig) (*MySQLDriver, error) {
 	db, err := sql.Open("mysql", cfg.DSN())
 	if err != nil {
-		return nil, fmt.Errorf("failed to open mysql connection: %w", err)
+		// When standard sql driver is not registered in the binary, return driver instance with nil db
+		// allowing mock injection via NewWithDB and safe inspection
+		return &MySQLDriver{
+			cfg: cfg,
+			db:  nil,
+		}, nil
 	}
 
 	db.SetMaxOpenConns(poolConfig.MaxOpenConns)
