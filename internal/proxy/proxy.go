@@ -204,6 +204,16 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
+	// Handle PostgreSQL CancelRequest (16 bytes, code 80877102)
+	// Cancel requests MUST be forwarded verbatim to backend without rewriting or JIT creation.
+	if pgwire.IsCancelRequest(packet) {
+		log.Printf("[BranchBase Proxy] 🛑 Forwarding CancelRequest packet to backend...")
+		if _, err := backendConn.Write(packet); err != nil {
+			log.Printf("[BranchBase Proxy] Error forwarding CancelRequest to backend: %v", err)
+		}
+		return
+	}
+
 	// Handle SSL negotiation: reply 'N' (SSL unsupported) so client continues in plaintext
 	if pgwire.IsSSLRequest(packet) {
 		if _, err := clientConn.Write([]byte{'N'}); err != nil {

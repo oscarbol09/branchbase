@@ -549,3 +549,74 @@ func TestHandleConnectionSendsErrorResponseOnDialFailure(t *testing.T) {
 		t.Errorf("expected ErrorResponse to contain SQLSTATE error code")
 	}
 }
+
+func TestProxyHandleConnection_CancelRequestForwarded(t *testing.T) {
+	// 1. Set up a mock backend listener
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to create mock backend listener: %v", err)
+	}
+	defer func() { _ = backendListener.Close() }()
+
+	backendPort := backendListener.Addr().(*net.TCPAddr).Port
+
+	receivedOnBackend := make(chan []byte, 1)
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		buf := make([]byte, 1024)
+		n, _ := conn.Read(buf)
+		if n > 0 {
+			receivedOnBackend <- buf[:n]
+		}
+	}()
+
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = backendPort
+
+	srv := NewServer(&cfg, t.TempDir(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	addr := listenerAddr(srv)
+
+	clientConn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("failed to dial proxy: %v", err)
+	}
+	defer func() { _ = clientConn.Close() }()
+
+	// Construct 16-byte CancelRequest packet (Length=16, Code=80877102, PID=1234, Secret=5678)
+	pkt := make([]byte, 16)
+	binary.BigEndian.PutUint32(pkt[0:4], 16)
+	binary.BigEndian.PutUint32(pkt[4:8], 80877102)
+	binary.BigEndian.PutUint32(pkt[8:12], 1234)
+	binary.BigEndian.PutUint32(pkt[12:16], 5678)
+
+	if _, err := clientConn.Write(pkt); err != nil {
+		t.Fatalf("failed to write CancelRequest: %v", err)
+	}
+
+	select {
+	case payload := <-receivedOnBackend:
+		if len(payload) != 16 {
+			t.Fatalf("backend received %d bytes, want 16 bytes for CancelRequest", len(payload))
+		}
+		if !bytes.Equal(payload, pkt) {
+			t.Fatalf("backend received corrupted CancelRequest packet: %x, want %x", payload, pkt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("backend timed out waiting for forwarded CancelRequest")
+	}
+}

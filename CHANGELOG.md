@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Single-file checkout event filtering in `branchbase hook-trigger` (`flag == "0"` from Git `post-checkout`), skipping redundant database driver connections and queries when not switching branches (#71).
 
 ### Fixed
+- Transparent forwarding of PostgreSQL `CancelRequest` (`1234.5678`) wire packets in proxy without startup rewriting or protocol corruption (#46).
+- Strict pre-validation of PostgreSQL 63-byte identifier limit in `PostgresDriver.CreateBranch()` preventing silent database truncation (#63).
 - Pinned official stable GitHub Actions in CI/CD pipeline (`actions/checkout@v4`, `actions/setup-go@v5`, `golangci/golangci-lint-action@v6`) (#71).
 
 
