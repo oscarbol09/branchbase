@@ -87,3 +87,40 @@ jobs:
 
       - name: Build CLI Binary
         run: go build -v -o bin/branchbase ./cmd/branchbase
+
+  integration-test:
+    name: E2E Integration (PostgreSQL Service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myapp_dev
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run E2E Integration Tests
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5433
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: myapp_dev
+        run: go test -v -tags=integration ./test/integration/...

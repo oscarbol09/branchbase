@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 - Single-file checkout event filtering in `branchbase hook-trigger` (`flag == "0"` from Git `post-checkout`), skipping redundant database driver connections and queries when not switching branches (#71).
 
+### Added
+- Native Apple File System (APFS) `clonefile(2)` syscall in macOS SQLite driver (`internal/driver/sqlite/clone_darwin.go`) with chunked copy fallback (#66).
+- Graceful active connection draining with timeout and forced termination on proxy shutdown in `internal/proxy` (#49).
+- UNIX domain socket support for proxy listener and database backend targets (`/tmp/.s.PGSQL.5432`) (#50).
+- TLS/SSL client negotiation and self-signed development certificates for `sslmode=require` connections (#34).
+- Database metadata tracking and `ErrBranchNameCollision` guard in database drivers preventing cross-branch name collisions (#60).
+- End-to-End integration test suite in GitHub Actions running with PostgreSQL 16 service container (`//go:build integration`) (#51).
+- Complete Prisma ORM developer integration guide (`docs/guides/prisma.md`) (#21).
+
 ### Fixed
 - Transparent forwarding of PostgreSQL `CancelRequest` (`1234.5678`) wire packets in proxy without startup rewriting or protocol corruption (#46).
 - Strict pre-validation of PostgreSQL 63-byte identifier limit in `PostgresDriver.CreateBranch()` preventing silent database truncation (#63).

@@ -232,6 +232,24 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 	`
 	_, _ = d.db.ExecContext(ctx, terminateQuery, sourceDB)
 
+	// Check collision with existing database comment
+	var existingComment sql.NullString
+	checkCommentQuery := `
+		SELECT d.description 
+		FROM pg_database db 
+		LEFT JOIN pg_shdescription d ON d.objoid = db.oid 
+		WHERE db.datname = $1;
+	`
+	_ = d.db.QueryRowContext(ctx, checkCommentQuery, targetDB).Scan(&existingComment)
+	if existingComment.Valid && existingComment.String != "" {
+		if strings.HasPrefix(existingComment.String, "branchbase:branch=") {
+			origBranch := strings.TrimPrefix(existingComment.String, "branchbase:branch=")
+			if origBranch != targetBranch && git.SanitizeBranchName(origBranch) == git.SanitizeBranchName(targetBranch) {
+				return fmt.Errorf("%w: target %q already owned by branch %q", driver.ErrBranchNameCollision, targetDB, origBranch)
+			}
+		}
+	}
+
 	// Step 2: Create new branch database from template
 	createQuery := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s;", pq.QuoteIdentifier(targetDB), pq.QuoteIdentifier(sourceDB))
 	_, err := d.db.ExecContext(ctx, createQuery)
@@ -243,6 +261,10 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 		}
 		return fmt.Errorf("failed to create branch database %q from %q: %w", targetDB, sourceDB, err)
 	}
+
+	// Step 3: Record original branch name metadata in database comment
+	commentQuery := fmt.Sprintf("COMMENT ON DATABASE %s IS %s;", pq.QuoteIdentifier(targetDB), pq.QuoteLiteral(fmt.Sprintf("branchbase:branch=%s", targetBranch)))
+	_, _ = d.db.ExecContext(ctx, commentQuery)
 
 	return nil
 }
@@ -279,10 +301,11 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 	exactBase := d.cfg.BaseDatabase
 	branchPattern := escapeLikeWildcards(d.cfg.BaseDatabase) + `\_%`
 	query := `
-		SELECT datname, pg_database_size(datname)
-		FROM pg_database
-		WHERE datname = $1 OR datname LIKE $2 ESCAPE '\'
-		ORDER BY datname ASC;
+		SELECT db.datname, pg_database_size(db.datname), COALESCE(d.description, '')
+		FROM pg_database db
+		LEFT JOIN pg_shdescription d ON d.objoid = db.oid
+		WHERE db.datname = $1 OR db.datname LIKE $2 ESCAPE '\'
+		ORDER BY db.datname ASC;
 	`
 
 	rows, err := d.db.QueryContext(ctx, query, exactBase, branchPattern)
@@ -297,13 +320,16 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 	for rows.Next() {
 		var datname string
 		var sizeBytes int64
-		if err := rows.Scan(&datname, &sizeBytes); err != nil {
+		var description string
+		if err := rows.Scan(&datname, &sizeBytes, &description); err != nil {
 			return nil, err
 		}
 
 		branchName := strings.TrimPrefix(datname, d.cfg.BaseDatabase+"_")
 		if datname == d.cfg.BaseDatabase {
 			branchName = "main"
+		} else if strings.HasPrefix(description, "branchbase:branch=") {
+			branchName = strings.TrimPrefix(description, "branchbase:branch=")
 		}
 
 		branches = append(branches, driver.BranchInfo{

@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ type BranchInfo struct {
 }
 
 // Driver defines the behavior required for database engines supported by BranchBase
+var ErrBranchNameCollision = errors.New("branch name collision detected: another branch already uses this database target")
+
 type Driver interface {
 	// Name returns the driver identifier (e.g. "postgres", "sqlite")
 	Name() string
