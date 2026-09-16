@@ -121,3 +121,58 @@ func TestInstallHooksEnsuresExecutablePermission(t *testing.T) {
 		t.Fatalf("unexpected hook file name: %s", fi.Name())
 	}
 }
+
+func TestInstallHooksWorktree(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	// 1. Setup main repo .git directory
+	mainGitDir := filepath.Join(tempDir, "main_repo", ".git")
+	mainHooksDir := filepath.Join(mainGitDir, "hooks")
+	if err := os.MkdirAll(mainHooksDir, 0755); err != nil {
+		t.Fatalf("mkdir mainHooksDir: %v", err)
+	}
+
+	// 2. Setup worktree gitdir with commondir pointing back to main .git
+	wtGitDir := filepath.Join(mainGitDir, "worktrees", "wt1")
+	if err := os.MkdirAll(wtGitDir, 0755); err != nil {
+		t.Fatalf("mkdir wtGitDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGitDir, "commondir"), []byte("../../\n"), 0644); err != nil {
+		t.Fatalf("write commondir: %v", err)
+	}
+
+	// 3. Setup worktree working copy with .git file
+	wtWorkDir := filepath.Join(tempDir, "worktree_copy")
+	if err := os.MkdirAll(wtWorkDir, 0755); err != nil {
+		t.Fatalf("mkdir wtWorkDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtWorkDir, ".git"), []byte("gitdir: "+wtGitDir+"\n"), 0644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	// 4. Test InstallHooks from worktree working copy
+	if err := InstallHooks(wtWorkDir); err != nil {
+		t.Fatalf("InstallHooks failed for worktree: %v", err)
+	}
+
+	if !AreHooksInstalled(wtWorkDir) {
+		t.Errorf("expected AreHooksInstalled to return true for worktree")
+	}
+
+	// Verify hooks were installed in mainHooksDir (commondir)
+	postCheckout := filepath.Join(mainHooksDir, "post-checkout")
+	if _, err := os.Stat(postCheckout); err != nil {
+		t.Fatalf("expected post-checkout hook to exist in commondir: %v", err)
+	}
+
+	// 5. Test UninstallHooks from worktree working copy
+	if err := UninstallHooks(wtWorkDir); err != nil {
+		t.Fatalf("UninstallHooks failed for worktree: %v", err)
+	}
+
+	if AreHooksInstalled(wtWorkDir) {
+		t.Errorf("expected AreHooksInstalled to return false after uninstall in worktree")
+	}
+}
+

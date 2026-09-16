@@ -176,6 +176,8 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	if s.drv != nil && sanitizedBranch != git.SanitizeBranchName(defaultBranch) {
 		if err := s.ensureBranchExists(sanitizedBranch, defaultBranch); err != nil {
 			log.Printf("[BranchBase Proxy] ❌ JIT branch provisioning failed for %q: %v", sanitizedBranch, err)
+			errMsg := fmt.Sprintf("BranchBase: failed to provision database for branch %q: %v", sanitizedBranch, err)
+			_, _ = clientConn.Write(pgwire.BuildErrorResponse("FATAL", "3D000", errMsg))
 			return
 		}
 	}
@@ -187,6 +189,8 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	backendConn, err := net.DialTimeout("tcp", backendAddr, 5*time.Second)
 	if err != nil {
 		log.Printf("[BranchBase Proxy] ❌ Failed to connect to backend %s: %v", backendAddr, err)
+		errMsg := fmt.Sprintf("BranchBase: failed to connect to database backend %s: %v", backendAddr, err)
+		_, _ = clientConn.Write(pgwire.BuildErrorResponse("FATAL", "08006", errMsg))
 		return
 	}
 	defer func() {
@@ -221,8 +225,11 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	rewrittenPacket, err := pgwire.RewriteDatabase(packet, targetDB)
 	if err != nil {
 		log.Printf("[BranchBase Proxy] ❌ Failed to rewrite database to %q: %v. Aborting connection.", targetDB, err)
+		errMsg := fmt.Sprintf("BranchBase: failed to route database to %q: %v", targetDB, err)
+		_, _ = clientConn.Write(pgwire.BuildErrorResponse("FATAL", "3D000", errMsg))
 		return
 	}
+
 
 	if _, err := backendConn.Write(rewrittenPacket); err != nil {
 		log.Printf("[BranchBase Proxy] Error forwarding startup packet to backend: %v", err)

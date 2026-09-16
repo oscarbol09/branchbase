@@ -484,5 +484,22 @@ func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		// Mock backend read timed out with 0 bytes, which is also valid fail-closed behavior
 	}
+
+	// 5. Verify client received the PostgreSQL ErrorResponse ('E') packet with details
+	clientBuf := make([]byte, 1024)
+	_ = clientConn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	n, readErr := clientConn.Read(clientBuf)
+	if readErr != nil && n == 0 {
+		t.Fatalf("expected client to receive ErrorResponse packet, got read error: %v", readErr)
+	}
+	if n > 0 {
+		if clientBuf[0] != 'E' {
+			t.Errorf("expected ErrorResponse packet type 'E', got %c", clientBuf[0])
+		}
+		if !bytes.Contains(clientBuf[:n], []byte("SFATAL")) {
+			t.Errorf("expected ErrorResponse to contain SFATAL")
+		}
+	}
 }
+
 

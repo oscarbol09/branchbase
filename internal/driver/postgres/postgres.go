@@ -199,6 +199,14 @@ func (d *PostgresDriver) BranchExists(ctx context.Context, branchName string) (b
 	return true, nil
 }
 
+// escapeLikeWildcards escapes '\', '%', and '_' characters for PostgreSQL LIKE patterns.
+func escapeLikeWildcards(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 // CreateBranch clones sourceBranch into targetBranch using PostgreSQL's TEMPLATE feature
 func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetBranch string) error {
 	if d.db == nil {
@@ -216,7 +224,7 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 	_, _ = d.db.ExecContext(ctx, terminateQuery, sourceDB)
 
 	// Step 2: Create new branch database from template
-	createQuery := fmt.Sprintf("CREATE DATABASE %q TEMPLATE %q;", targetDB, sourceDB)
+	createQuery := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s;", pq.QuoteIdentifier(targetDB), pq.QuoteIdentifier(sourceDB))
 	_, err := d.db.ExecContext(ctx, createQuery)
 	if err != nil {
 		var pqErr *pq.Error
@@ -249,25 +257,26 @@ func (d *PostgresDriver) DeleteBranch(ctx context.Context, branchName string) er
 	`
 	_, _ = d.db.ExecContext(ctx, terminateQuery, dbName)
 
-	dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS %q;", dbName)
+	dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS %s;", pq.QuoteIdentifier(dbName))
 	_, err := d.db.ExecContext(ctx, dropQuery)
 	return err
 }
 
-// ListBranches returns all databases that start with the base_database prefix
+// ListBranches returns all databases that match the base_database or base_database_<branch> pattern
 func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, error) {
 	if d.db == nil {
 		return nil, fmt.Errorf("postgres connection not initialized")
 	}
-	prefix := d.cfg.BaseDatabase + "%"
+	exactBase := d.cfg.BaseDatabase
+	branchPattern := escapeLikeWildcards(d.cfg.BaseDatabase) + `\_%`
 	query := `
 		SELECT datname, pg_database_size(datname)
 		FROM pg_database
-		WHERE datname LIKE $1
+		WHERE datname = $1 OR datname LIKE $2 ESCAPE '\'
 		ORDER BY datname ASC;
 	`
 
-	rows, err := d.db.QueryContext(ctx, query, prefix)
+	rows, err := d.db.QueryContext(ctx, query, exactBase, branchPattern)
 	if err != nil {
 		return nil, err
 	}
@@ -318,3 +327,4 @@ func (d *PostgresDriver) formatDBName(branch string) string {
 	}
 	return fmt.Sprintf("%s_%s", d.cfg.BaseDatabase, sanitized)
 }
+

@@ -391,3 +391,42 @@ func TestRunHookTriggerWithSqlite(t *testing.T) {
 		t.Fatalf("expected pre-warmed database %s to exist: %v", prewarmedDB, err)
 	}
 }
+
+func TestRunHookTriggerFileCheckoutSkipped(t *testing.T) {
+	dir := t.TempDir()
+
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/file-checkout\n"), 0644)
+
+	baseDB := filepath.Join(dir, "myapp.db")
+	_ = os.WriteFile(baseDB, []byte("myapp-content"), 0644)
+
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Strategy.SnapshotOnSwitch = true
+	cfg.Proxy.DefaultBranch = "main"
+	_ = cfg.SaveJSON(filepath.Join(dir, ".branchbase.json"))
+
+	// Post-checkout with flag "0" (single file checkout) should skip prewarming
+	argsWithHookName := []string{"post-checkout", "HEAD~1", "HEAD", "0"}
+	runHookTrigger(dir, argsWithHookName)
+
+	targetDB := filepath.Join(dir, "myapp_feature_file_checkout.db")
+	if _, err := os.Stat(targetDB); !os.IsNotExist(err) {
+		t.Fatalf("expected database %s not to be created on file checkout flag '0'", targetDB)
+	}
+
+	// Direct 3 args with flag "0" should also skip
+	argsDirect := []string{"HEAD~1", "HEAD", "0"}
+	runHookTrigger(dir, argsDirect)
+
+	if _, err := os.Stat(targetDB); !os.IsNotExist(err) {
+		t.Fatalf("expected database %s not to be created on direct flag '0'", targetDB)
+	}
+}
+

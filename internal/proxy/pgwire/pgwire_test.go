@@ -165,3 +165,48 @@ func FuzzParseStartupMessage(f *testing.F) {
 		_, _ = RewriteDatabase(data, "fuzz_database")
 	})
 }
+
+func TestBuildErrorResponse(t *testing.T) {
+	t.Parallel()
+
+	pkt := BuildErrorResponse("FATAL", "3D000", "database does not exist")
+	if len(pkt) < 5 {
+		t.Fatalf("packet too short: %d bytes", len(pkt))
+	}
+
+	// Byte 0 must be 'E'
+	if pkt[0] != 'E' {
+		t.Errorf("expected packet type 'E', got %c", pkt[0])
+	}
+
+	// Bytes 1..4: big-endian payload length (excluding 'E' byte)
+	length := binary.BigEndian.Uint32(pkt[1:5])
+	if int(length) != len(pkt)-1 {
+		t.Errorf("packet length header %d != payload length %d", length, len(pkt)-1)
+	}
+
+	// Check fields in packet body
+	body := string(pkt[5:])
+	if !bytes.Contains(pkt, []byte("SFATAL\x00")) {
+		t.Errorf("missing Severity field in body: %q", body)
+	}
+	if !bytes.Contains(pkt, []byte("C3D000\x00")) {
+		t.Errorf("missing Code field in body: %q", body)
+	}
+	if !bytes.Contains(pkt, []byte("Mdatabase does not exist\x00")) {
+		t.Errorf("missing Message field in body: %q", body)
+	}
+	if pkt[len(pkt)-1] != 0 {
+		t.Errorf("expected terminating null byte at end of packet")
+	}
+
+	// Defaults test
+	defaultPkt := BuildErrorResponse("", "", "default error")
+	if !bytes.Contains(defaultPkt, []byte("SFATAL\x00")) {
+		t.Errorf("expected default severity FATAL")
+	}
+	if !bytes.Contains(defaultPkt, []byte("CXX000\x00")) {
+		t.Errorf("expected default code XX000")
+	}
+}
+

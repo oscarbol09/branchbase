@@ -644,6 +644,16 @@ func runHooks(cwd, action string) {
 }
 
 func runHookTrigger(cwd string, args []string) {
+	// For post-checkout hooks: Git passes <previous_head> <new_head> <flag>.
+	// flag == "1" indicates a branch switch; flag == "0" indicates a single-file checkout.
+	// Skip execution on file checkouts to avoid unnecessary database operations.
+	if len(args) >= 4 && args[0] == "post-checkout" && args[3] == "0" {
+		return
+	}
+	if len(args) == 3 && args[2] == "0" {
+		return
+	}
+
 	// Hook triggers run non-intrusively in the background with a 5-second strict timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -652,6 +662,7 @@ func runHookTrigger(cwd string, args []string) {
 	if err != nil || !cfg.Strategy.SnapshotOnSwitch {
 		return
 	}
+
 
 	branch, err := git.ResolveCurrentBranch(cwd)
 	if err != nil || branch == "" {
