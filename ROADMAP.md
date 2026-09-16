@@ -34,8 +34,8 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - Multi-OS GitHub Actions CI workflow (Ubuntu, macOS, Windows).
   - Unit test suite for resolver, config, pgwire, hooks, and drivers.
 
-### 📍 Phase 2: SQLite & Multi-OS Hardening (v0.2.0)
-*Focus: Single-file SQLite databases & cross-platform support.*
+### 📍 Phase 2: SQLite & Multi-OS Hardening (v0.2.0 - Completed ✅)
+*Focus: Single-file SQLite databases, interactive terminal dashboard & cross-platform support.*
 - [x] **SQLite Driver:**
   - Copy-on-Write (CoW) implementation on macOS.
   - Linux `ioctl(FICLONE)` reflink support for Btrfs and XFS.
@@ -44,8 +44,8 @@ This document outlines the milestones and engineering priorities for **BranchBas
 - [x] **Cleanup & Pruning:**
   - `branchbase prune`: Detect merged and orphaned Git branches and delete corresponding databases.
   - Interactive deletion confirmation (`--dry-run` and `--force`).
-- [ ] **Terminal UI (TUI):**
-  - Interactive terminal dashboard to view branches, database sizes, and active queries.
+- [x] **Terminal UI (TUI):**
+  - Interactive terminal dashboard (`branchbase tui` / `branchbase dashboard`) with keyboard navigation (`↑`/`↓`, `j`/`k`), branch switching (`Enter`/`s`), and real-time refresh (`r`).
 
 ### 📍 Phase 3: Ecosystem & Advanced Workflows (v0.3.0)
 *Focus: MySQL, Docker Compose deep integration, and multi-agent workflows.*

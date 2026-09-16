@@ -19,6 +19,7 @@ import (
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/hook"
 	"github.com/branchbase/branchbase/internal/proxy"
+	"github.com/branchbase/branchbase/internal/tui"
 )
 
 const Version = "0.1.0-alpha"
@@ -36,6 +37,7 @@ Core Commands:
   switch <name> [--no-create] Manually switch or provision an isolated database for a branch
   list [--json]            List all active and ephemeral databases managed by BranchBase
   prune [--dry-run] [--force] Delete databases associated with merged or deleted Git branches
+  tui                      Launch interactive terminal UI dashboard
 
 Hook Management:
   hooks install    Install post-checkout and post-merge hooks into .git/hooks/
@@ -112,6 +114,9 @@ func main() {
 			}
 		}
 		runList(cwd, jsonOutput)
+
+	case "tui", "dashboard", "ui":
+		runTUI(cwd)
 
 	case "prune":
 		dryRun := false
@@ -314,6 +319,38 @@ func getDriverForConfig(cfg *config.Config, lightweight bool) (driver.Driver, er
 	}
 
 	return driver.GetDriver(drvName, driverParamsForConfig(cfg, lightweight))
+}
+
+func runTUI(cwd string) {
+	cfg, err := config.LoadConfig(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	drv, err := getDriverForConfig(cfg, false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing driver %s: %v\n", cfg.Driver, err)
+		os.Exit(1)
+	}
+	defer func() {
+		_ = drv.Close()
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	if err := tui.Run(ctx, cwd, cfg, drv, os.Stdin, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func runSwitch(cwd, targetBranch string, noCreate bool) {

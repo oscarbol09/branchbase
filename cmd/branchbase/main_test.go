@@ -8,7 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"bytes"
+	"context"
+
 	"github.com/branchbase/branchbase/internal/config"
+	"github.com/branchbase/branchbase/internal/tui"
 )
 
 func TestStatusDatabaseNameNilConfig(t *testing.T) {
@@ -430,3 +434,43 @@ func TestRunHookTriggerFileCheckoutSkipped(t *testing.T) {
 	}
 }
 
+func TestRunTUIWithSqlite(t *testing.T) {
+	dir := t.TempDir()
+
+	baseDB := filepath.Join(dir, "app_tui.db")
+	if err := os.WriteFile(baseDB, []byte("SQLite format 3\x00tui-content"), 0644); err != nil {
+		t.Fatalf("failed to create base db: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Driver = "sqlite"
+	cfg.Connection.BaseDatabase = baseDB
+	cfg.Connection.Path = baseDB
+	cfg.Proxy.DefaultBranch = "main"
+
+	if err := cfg.SaveJSON(filepath.Join(dir, ".branchbase.json")); err != nil {
+		t.Fatalf("SaveJSON: %v", err)
+	}
+
+	drv, err := getDriverForConfig(&cfg, false)
+	if err != nil {
+		t.Fatalf("getDriverForConfig: %v", err)
+	}
+	defer drv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Simulate user typing 'q' immediately to exit TUI
+	input := strings.NewReader("q\n")
+	var output bytes.Buffer
+
+	if err := tui.Run(ctx, dir, &cfg, drv, input, &output); err != nil {
+		t.Fatalf("tui.Run failed: %v", err)
+	}
+
+	outStr := output.String()
+	if !strings.Contains(outStr, "BranchBase Dashboard") {
+		t.Fatalf("expected output to contain dashboard header, got: %s", outStr)
+	}
+}
