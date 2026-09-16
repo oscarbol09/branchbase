@@ -25,13 +25,23 @@ type ConnectionConfig struct {
 	User         string `json:"user" yaml:"user"`
 	Password     string `json:"password" yaml:"password"`
 	BaseDatabase string `json:"base_database" yaml:"base_database"`
-	Path         string `json:"path,omitempty" yaml:"path,omitempty"` // For SQLite
+	Path         string `json:"path,omitempty" yaml:"path,omitempty"`               // For SQLite
+	SocketPath   string `json:"socket_path,omitempty" yaml:"socket_path,omitempty"` // For UNIX domain sockets
+}
+
+type TLSConfig struct {
+	Enabled  bool   `json:"enabled" yaml:"enabled"`
+	CertFile string `json:"cert_file,omitempty" yaml:"cert_file,omitempty"`
+	KeyFile  string `json:"key_file,omitempty" yaml:"key_file,omitempty"`
+	AutoCert bool   `json:"auto_cert" yaml:"auto_cert"`
 }
 
 type ProxyConfig struct {
-	Enabled       bool   `json:"enabled" yaml:"enabled"`
-	ListenPort    int    `json:"listen_port" yaml:"listen_port"`
-	DefaultBranch string `json:"default_branch" yaml:"default_branch"`
+	Enabled       bool      `json:"enabled" yaml:"enabled"`
+	ListenPort    int       `json:"listen_port" yaml:"listen_port"`
+	DefaultBranch string    `json:"default_branch" yaml:"default_branch"`
+	SocketPath    string    `json:"socket_path,omitempty" yaml:"socket_path,omitempty"` // For UNIX domain sockets
+	TLS           TLSConfig `json:"tls" yaml:"tls"`
 }
 
 type StrategyConfig struct {

@@ -288,7 +288,12 @@ func TestCreateBranchWithMock(t *testing.T) {
 	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
 		WithArgs("myapp_dev").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_feature_auth").
+		WillReturnRows(sqlmock.NewRows([]string{"description"}))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_feature_auth" TEMPLATE "myapp_dev";`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`COMMENT ON DATABASE "myapp_dev_feature_auth" IS 'branchbase:branch=feature_auth';`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	if err := d.CreateBranch(ctx, "main", "feature_auth"); err != nil {
@@ -299,11 +304,27 @@ func TestCreateBranchWithMock(t *testing.T) {
 	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
 		WithArgs("myapp_dev").
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_feature_auth").
+		WillReturnRows(sqlmock.NewRows([]string{"description"}))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_feature_auth" TEMPLATE "myapp_dev";`).
 		WillReturnError(errors.New("source database is being accessed by other users"))
 
 	if err := d.CreateBranch(ctx, "main", "feature_auth"); err == nil {
 		t.Fatal("expected error on CreateBranch, got nil")
+	}
+
+	// Case 3: Collision detected with different branch name
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_feat_a_b").
+		WillReturnRows(sqlmock.NewRows([]string{"description"}).AddRow("branchbase:branch=feat/a_b"))
+
+	err = d.CreateBranch(ctx, "main", "feat/a-b")
+	if !errors.Is(err, driver.ErrBranchNameCollision) {
+		t.Fatalf("expected ErrBranchNameCollision, got %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -380,11 +401,11 @@ func TestListBranchesWithMock(t *testing.T) {
 	ctx := context.Background()
 
 	// Case 1: Success
-	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname = \$1 OR datname LIKE \$2 ESCAPE '\\' ORDER BY datname ASC;`).
+	mock.ExpectQuery(`SELECT db\.datname, pg_database_size\(db\.datname\), COALESCE\(d\.description, ''\) FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1 OR db\.datname LIKE \$2 ESCAPE '\\' ORDER BY db\.datname ASC;`).
 		WithArgs("myapp_dev", `myapp\_dev\_%`).
-		WillReturnRows(sqlmock.NewRows([]string{"datname", "pg_database_size"}).
-			AddRow("myapp_dev", int64(10485760)).
-			AddRow("myapp_dev_feature_auth", int64(20971520)))
+		WillReturnRows(sqlmock.NewRows([]string{"datname", "pg_database_size", "description"}).
+			AddRow("myapp_dev", int64(10485760), "").
+			AddRow("myapp_dev_feature_auth", int64(20971520), "branchbase:branch=feature/auth"))
 
 	branches, err := d.ListBranches(ctx)
 	if err != nil {
@@ -397,12 +418,12 @@ func TestListBranchesWithMock(t *testing.T) {
 	if branches[0].Name != "main" || !branches[0].IsProtected || branches[0].SizeBytes != 10485760 {
 		t.Errorf("unexpected branch[0]: %+v", branches[0])
 	}
-	if branches[1].Name != "feature_auth" || branches[1].IsProtected || branches[1].SizeBytes != 20971520 {
+	if branches[1].Name != "feature/auth" || branches[1].IsProtected || branches[1].SizeBytes != 20971520 {
 		t.Errorf("unexpected branch[1]: %+v", branches[1])
 	}
 
 	// Case 2: Query failure
-	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname = \$1 OR datname LIKE \$2 ESCAPE '\\' ORDER BY datname ASC;`).
+	mock.ExpectQuery(`SELECT db\.datname, pg_database_size\(db\.datname\), COALESCE\(d\.description, ''\) FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1 OR db\.datname LIKE \$2 ESCAPE '\\' ORDER BY db\.datname ASC;`).
 		WithArgs("myapp_dev", `myapp\_dev\_%`).
 		WillReturnError(errors.New("permission denied"))
 

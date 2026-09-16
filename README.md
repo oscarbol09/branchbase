@@ -170,6 +170,10 @@ type Driver interface {
 
 ---
 
+## 📚 Framework Integration Guides
+
+- ◬ **[Prisma ORM Integration Guide](docs/guides/prisma.md)**: Zero-conflict database migrations with TypeScript & Node.js.
+
 ## 🛠️ Quickstart
 
 ### 1. Initialize in your Repository
