@@ -26,12 +26,54 @@ fi
 `, hookMarkerStart, hookName, hookMarkerEnd)
 }
 
+// resolveGitHooksDir locates the actual hooks directory for both standard repositories
+// and Git worktrees/submodules where .git is a pointer file (gitdir: ...).
+func resolveGitHooksDir(repoPath string) (string, error) {
+	gitPath := filepath.Join(repoPath, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return "", ErrNotGitRepository
+	}
+
+	if info.IsDir() {
+		return filepath.Join(gitPath, "hooks"), nil
+	}
+
+	// .git is a file (common in git worktrees or submodules)
+	content, err := os.ReadFile(gitPath)
+	if err != nil {
+		return "", ErrNotGitRepository
+	}
+
+	text := strings.TrimSpace(string(content))
+	if !strings.HasPrefix(text, "gitdir: ") {
+		return "", ErrNotGitRepository
+	}
+
+	gitDir := strings.TrimSpace(strings.TrimPrefix(text, "gitdir: "))
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(repoPath, gitDir)
+	}
+
+	// In worktrees, gitDir is typically .git/worktrees/<name>.
+	// If a commondir file exists, hooks reside in the common .git directory.
+	commonDirPath := filepath.Join(gitDir, "commondir")
+	if cBytes, err := os.ReadFile(commonDirPath); err == nil {
+		cDir := strings.TrimSpace(string(cBytes))
+		if !filepath.IsAbs(cDir) {
+			cDir = filepath.Join(gitDir, cDir)
+		}
+		return filepath.Join(cDir, "hooks"), nil
+	}
+
+	return filepath.Join(gitDir, "hooks"), nil
+}
+
 // InstallHooks installs the post-checkout and post-merge hooks into .git/hooks
 func InstallHooks(repoPath string) error {
-	gitHooksDir := filepath.Join(repoPath, ".git", "hooks")
-	info, err := os.Stat(filepath.Join(repoPath, ".git"))
-	if err != nil || !info.IsDir() {
-		return ErrNotGitRepository
+	gitHooksDir, err := resolveGitHooksDir(repoPath)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(gitHooksDir, 0755); err != nil {
@@ -78,7 +120,10 @@ func installSingleHook(hookPath, hookName string) error {
 
 // UninstallHooks cleanly removes BranchBase blocks from .git/hooks
 func UninstallHooks(repoPath string) error {
-	gitHooksDir := filepath.Join(repoPath, ".git", "hooks")
+	gitHooksDir, err := resolveGitHooksDir(repoPath)
+	if err != nil {
+		return err
+	}
 	hooks := []string{"post-checkout", "post-merge"}
 
 	for _, h := range hooks {
@@ -122,10 +167,15 @@ func UninstallHooks(repoPath string) error {
 
 // AreHooksInstalled checks whether BranchBase hooks are configured in the repository
 func AreHooksInstalled(repoPath string) bool {
-	postCheckout := filepath.Join(repoPath, ".git", "hooks", "post-checkout")
+	gitHooksDir, err := resolveGitHooksDir(repoPath)
+	if err != nil {
+		return false
+	}
+	postCheckout := filepath.Join(gitHooksDir, "post-checkout")
 	data, err := os.ReadFile(postCheckout)
 	if err != nil {
 		return false
 	}
 	return strings.Contains(string(data), hookMarkerStart)
 }
+

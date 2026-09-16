@@ -349,6 +349,25 @@ func TestDeleteBranchWithMock(t *testing.T) {
 	}
 }
 
+func TestEscapeLikeWildcards(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"myapp_dev", `myapp\_dev`},
+		{"test%db", `test\%db`},
+		{`path\to\db`, `path\\to\\db`},
+		{"clean", "clean"},
+	}
+	for _, tt := range tests {
+		got := escapeLikeWildcards(tt.input)
+		if got != tt.want {
+			t.Errorf("escapeLikeWildcards(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestListBranchesWithMock(t *testing.T) {
 	t.Parallel()
 	db, mock, err := sqlmock.New()
@@ -361,8 +380,8 @@ func TestListBranchesWithMock(t *testing.T) {
 	ctx := context.Background()
 
 	// Case 1: Success
-	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname LIKE \$1 ORDER BY datname ASC;`).
-		WithArgs("myapp_dev%").
+	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname = \$1 OR datname LIKE \$2 ESCAPE '\\' ORDER BY datname ASC;`).
+		WithArgs("myapp_dev", `myapp\_dev\_%`).
 		WillReturnRows(sqlmock.NewRows([]string{"datname", "pg_database_size"}).
 			AddRow("myapp_dev", int64(10485760)).
 			AddRow("myapp_dev_feature_auth", int64(20971520)))
@@ -383,8 +402,8 @@ func TestListBranchesWithMock(t *testing.T) {
 	}
 
 	// Case 2: Query failure
-	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname LIKE \$1 ORDER BY datname ASC;`).
-		WithArgs("myapp_dev%").
+	mock.ExpectQuery(`SELECT datname, pg_database_size\(datname\) FROM pg_database WHERE datname = \$1 OR datname LIKE \$2 ESCAPE '\\' ORDER BY datname ASC;`).
+		WithArgs("myapp_dev", `myapp\_dev\_%`).
 		WillReturnError(errors.New("permission denied"))
 
 	if _, err := d.ListBranches(ctx); err == nil {

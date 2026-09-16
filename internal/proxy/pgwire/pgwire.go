@@ -167,3 +167,47 @@ func RewriteDatabase(packet []byte, newDatabase string) ([]byte, error) {
 
 	return result, nil
 }
+
+// BuildErrorResponse constructs a PostgreSQL wire protocol 'E' (ErrorResponse) packet.
+// The packet contains Severity ('S'), SQLSTATE code ('C'), and Message ('M') fields.
+func BuildErrorResponse(severity, code, message string) []byte {
+	if severity == "" {
+		severity = "FATAL"
+	}
+	if code == "" {
+		code = "XX000" // internal_error
+	}
+
+	var buf bytes.Buffer
+	// Message type byte 'E'
+	buf.WriteByte('E')
+
+	// Length placeholder (4 bytes)
+	buf.Write([]byte{0, 0, 0, 0})
+
+	// Severity ('S')
+	buf.WriteByte('S')
+	buf.WriteString(severity)
+	buf.WriteByte(0)
+
+	// SQLSTATE Code ('C')
+	buf.WriteByte('C')
+	buf.WriteString(code)
+	buf.WriteByte(0)
+
+	// Primary Message ('M')
+	buf.WriteByte('M')
+	buf.WriteString(message)
+	buf.WriteByte(0)
+
+	// Terminating zero byte
+	buf.WriteByte(0)
+
+	result := buf.Bytes()
+	// Length excludes the leading 'E' type byte
+	binary.BigEndian.PutUint32(result[1:5], uint32(len(result)-1))
+
+	return result
+}
+
+
