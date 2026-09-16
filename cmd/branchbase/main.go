@@ -24,7 +24,7 @@ import (
 	"github.com/branchbase/branchbase/internal/tui"
 )
 
-const Version = "0.1.0-alpha"
+const Version = "0.3.0"
 
 func printUsage() {
 	fmt.Println(`BranchBase 🌿 - Instant local database branching for Git workflows
