@@ -68,7 +68,9 @@ func main() {
 
 	switch command {
 	case "version", "-v", "--version":
-		fmt.Printf("BranchBase v%s\n", Version)
+		fmt.Printf("BranchBase v%s 🌿\n", Version)
+		fmt.Println("Crafted with 💚 by Oscar Madera (@oscarbol09)")
+		fmt.Println("https://github.com/oscarbol09/branchbase")
 
 	case "help", "-h", "--help":
 		printUsage()
