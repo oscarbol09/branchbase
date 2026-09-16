@@ -13,6 +13,8 @@ import (
 const (
 	// SSLRequestCode is the special protocol version indicating an SSL handshake request
 	SSLRequestCode = 80877103 // 1234.5679 in hex (0x04D2162F)
+	// CancelRequestCode is the special protocol code for cancelling a running query
+	CancelRequestCode = 80877102 // 1234.5678 in hex (0x04D2162E)
 	// ProtocolVersion3 is the PostgreSQL 3.0 protocol version number
 	ProtocolVersion3 = 196608 // 3.0 in hex (0x00030000)
 	// MaxDatabaseIdentifierLen is the maximum identifier length in PostgreSQL (NAMEDATALEN - 1)
