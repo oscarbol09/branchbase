@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,8 +95,6 @@ func TestPostgreSQLE2EIntegration(t *testing.T) {
 	defer func() { _ = srv.Stop() }()
 
 	// 3. Connect client to Proxy on main branch
-	// Retrieve proxy address
-	// Connect via sql
 	time.Sleep(200 * time.Millisecond)
 
 	// Switch branch to feature/payments

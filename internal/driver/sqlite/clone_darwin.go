@@ -7,6 +7,9 @@ import (
 	"unsafe"
 )
 
+// sysClonefile is the Darwin / macOS syscall number for clonefile(2) (sys/syscall.h SYS_clonefile = 532)
+const sysClonefile = 532
+
 // CloneFile performs fast file snapshotting on macOS using the native APFS clonefile(2) syscall.
 // If the underlying filesystem does not support clonefile (e.g. HFS+ or external non-APFS mounts),
 // it falls back seamlessly to copyFileChunked.
@@ -21,7 +24,7 @@ func CloneFile(src, dst string) error {
 	}
 
 	// clonefile(src, dst, flags) is syscall 532 on Darwin / macOS
-	_, _, errno := syscall.Syscall(syscall.SYS_CLONEFILE, uintptr(unsafe.Pointer(srcPtr)), uintptr(unsafe.Pointer(dstPtr)), 0)
+	_, _, errno := syscall.Syscall(sysClonefile, uintptr(unsafe.Pointer(srcPtr)), uintptr(unsafe.Pointer(dstPtr)), 0)
 	if errno != 0 {
 		if errno == syscall.ENOTSUP || errno == syscall.ENOSYS || errno == syscall.EXDEV {
 			return copyFileChunked(src, dst)
