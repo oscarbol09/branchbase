@@ -16,6 +16,8 @@ import (
 )
 
 // Config holds connection parameters for PostgreSQL
+const MaxPostgresIdentifierLen = 63
+
 type Config struct {
 	Host         string
 	Port         int
@@ -214,6 +216,13 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 	}
 	sourceDB := d.formatDBName(sourceBranch)
 	targetDB := d.formatDBName(targetBranch)
+
+	if len(targetDB) > MaxPostgresIdentifierLen {
+		return fmt.Errorf("target database name %q (%d bytes) exceeds PostgreSQL 63-byte identifier limit; please use a shorter branch name", targetDB, len(targetDB))
+	}
+	if len(sourceDB) > MaxPostgresIdentifierLen {
+		return fmt.Errorf("source database name %q (%d bytes) exceeds PostgreSQL 63-byte identifier limit", sourceDB, len(sourceDB))
+	}
 
 	// Step 1: Terminate open connections to the source database
 	terminateQuery := `

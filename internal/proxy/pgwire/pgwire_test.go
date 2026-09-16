@@ -210,3 +210,30 @@ func TestBuildErrorResponse(t *testing.T) {
 	}
 }
 
+func TestIsCancelRequest(t *testing.T) {
+	t.Parallel()
+
+	// Valid CancelRequest packet
+	pkt := make([]byte, 16)
+	binary.BigEndian.PutUint32(pkt[0:4], 16)
+	binary.BigEndian.PutUint32(pkt[4:8], CancelRequestCode)
+	binary.BigEndian.PutUint32(pkt[8:12], 1234)
+	binary.BigEndian.PutUint32(pkt[12:16], 5678)
+
+	if !IsCancelRequest(pkt) {
+		t.Error("expected IsCancelRequest to return true for valid packet")
+	}
+
+	// Wrong length
+	if IsCancelRequest(pkt[:15]) {
+		t.Error("expected IsCancelRequest to return false for short packet")
+	}
+
+	// Wrong code
+	badCode := make([]byte, 16)
+	copy(badCode, pkt)
+	binary.BigEndian.PutUint32(badCode[4:8], 196608)
+	if IsCancelRequest(badCode) {
+		t.Error("expected IsCancelRequest to return false for wrong code")
+	}
+}

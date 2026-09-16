@@ -211,3 +211,15 @@ func BuildErrorResponse(severity, code, message string) []byte {
 }
 
 
+
+// IsCancelRequest returns true if the packet matches a PostgreSQL CancelRequest message.
+// CancelRequest packets are exactly 16 bytes: Int32(16) + Int32(80877102) + Int32(PID) + Int32(SecretKey).
+func IsCancelRequest(packet []byte) bool {
+	if len(packet) != 16 {
+		return false
+	}
+	length := binary.BigEndian.Uint32(packet[0:4])
+	code := binary.BigEndian.Uint32(packet[4:8])
+	return length == 16 && code == CancelRequestCode
+}
+

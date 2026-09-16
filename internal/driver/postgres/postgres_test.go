@@ -512,3 +512,28 @@ func TestPostgresDriverRegistered(t *testing.T) {
 		t.Errorf("expected 'postgres', got %q", drv.Name())
 	}
 }
+
+func TestPostgresCreateBranch_Exceeds63Bytes(t *testing.T) {
+	t.Parallel()
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	cfg := Config{
+		BaseDatabase: "myapp_dev",
+	}
+	drv := NewWithDB(cfg, db)
+	ctx := context.Background()
+
+	// 60-character branch name + 10-character prefix "myapp_dev_" = 70 bytes (> 63 bytes)
+	longBranch := "feature-very-long-branch-name-that-will-exceed-the-sixty-three-byte-limit-in-postgres"
+	err = drv.CreateBranch(ctx, "main", longBranch)
+	if err == nil {
+		t.Fatal("expected error when target database exceeds 63 bytes, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds PostgreSQL 63-byte identifier limit") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
