@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strict target database identifier validation and sanitization in `pgwire.RewriteDatabase()`, enforcing standard PostgreSQL naming conventions, a 63-byte limit, and rejecting embedded null bytes (#41).
 
 ### Added
+- Native MySQL and MariaDB database driver (`internal/driver/mysql`) with schema cloning, table replication, backtick identifier quoting, and `information_schema` storage metrics (#75).
+- Docker Compose auto-detection engine (`internal/compose`) parsing `docker-compose.yml` and `compose.yaml` to extract database services, ports, and environment credentials during `branchbase init` (#75).
 - Interactive Terminal UI (TUI) dashboard (`branchbase tui` / `branchbase dashboard`) with zero external dependencies, ANSI escape sequences, arrow/vim keyboard navigation, branch switching, and live database inspection (#74).
 - PostgreSQL wire protocol `ErrorResponse` (`'E'`) packet generator (`pgwire.BuildErrorResponse`) providing detailed client-side diagnostics (Severity, SQLSTATE, message) upon JIT provisioning or routing failures (#71).
 - Transparent Git worktree and submodule support in hook installer (`internal/hook/hook.go`) resolving pointer files (`gitdir: ...`) and `commondir` (#71).

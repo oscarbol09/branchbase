@@ -15,7 +15,9 @@ import (
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
 	_ "github.com/branchbase/branchbase/internal/driver/postgres"
+	_ "github.com/branchbase/branchbase/internal/driver/mysql"
 	_ "github.com/branchbase/branchbase/internal/driver/sqlite"
+	"github.com/branchbase/branchbase/internal/compose"
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/hook"
 	"github.com/branchbase/branchbase/internal/proxy"
@@ -154,6 +156,13 @@ func runInit(cwd string) {
 		fmt.Println("⚠️  BranchBase is already initialized (.branchbase.json exists).")
 	} else {
 		cfg := config.DefaultConfig()
+
+		// Detect Docker Compose service
+		if dbSvc, composeFile, err := compose.DetectCompose(cwd); err == nil && dbSvc != nil {
+			compose.ApplyToConfig(&cfg, dbSvc)
+			fmt.Printf("🐳 Auto-detected %s database from %s (port %d, db %q)\n", dbSvc.Driver, composeFile, dbSvc.Port, dbSvc.Database)
+		}
+
 		if err := cfg.SaveJSON(configPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to write configuration: %v\n", err)
 			os.Exit(1)
