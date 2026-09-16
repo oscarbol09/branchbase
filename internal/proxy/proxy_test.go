@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -502,4 +503,49 @@ func TestProxyHandleConnection_FailClosedOnRewriteError(t *testing.T) {
 	}
 }
 
+func TestHandleConnectionSendsErrorResponseOnDialFailure(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = 59999 // Backend not listening
 
+	srv := NewServer(&cfg, t.TempDir(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	addr := listenerAddr(srv)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("failed to dial proxy listener at %s: %v", addr, err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+	header := make([]byte, 5)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		t.Fatalf("read ErrorResponse header: %v (want wire 'E' packet, not EOF)", err)
+	}
+	if header[0] != 'E' {
+		t.Fatalf("got message type %q, want 'E'", header[0])
+	}
+	length := binary.BigEndian.Uint32(header[1:5])
+	if length < 5 {
+		t.Fatalf("implausible ErrorResponse length %d", length)
+	}
+	body := make([]byte, length-4)
+	if _, err := io.ReadFull(conn, body); err != nil {
+		t.Fatalf("read ErrorResponse body: %v", err)
+	}
+
+	if !bytes.Contains(body, []byte("SFATAL")) {
+		t.Errorf("expected ErrorResponse to contain SFATAL")
+	}
+	if !bytes.Contains(body, []byte("C08006")) && !bytes.Contains(body, []byte("C08001")) {
+		t.Errorf("expected ErrorResponse to contain SQLSTATE error code")
+	}
+}
