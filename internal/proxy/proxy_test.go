@@ -101,7 +101,7 @@ func TestServerLifecycle(t *testing.T) {
 	}
 
 	// Dial proxy to trigger acceptLoop
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 	if err != nil {
 		t.Fatalf("failed to dial proxy listener at %s: %v", addr, err)
 	}
@@ -197,7 +197,8 @@ func TestServerStartStopRace(t *testing.T) {
 	const n = 50
 	for i := 0; i < n; i++ {
 		srv := NewServer(&cfg, t.TempDir(), nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		srv.SetDrainTimeout(20 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -224,6 +225,7 @@ func TestServerAcceptLoopStopRace(t *testing.T) {
 	cfg.Connection.Port = 59999
 
 	srv := NewServer(&cfg, t.TempDir(), nil)
+	srv.SetDrainTimeout(50 * time.Millisecond)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -246,7 +248,7 @@ func TestServerAcceptLoopStopRace(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+			conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 			if err == nil {
 				_ = conn.Close()
 			}
@@ -519,7 +521,7 @@ func TestHandleConnectionSendsErrorResponseOnDialFailure(t *testing.T) {
 	defer func() { _ = srv.Stop() }()
 
 	addr := listenerAddr(srv)
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
 	if err != nil {
 		t.Fatalf("failed to dial proxy listener at %s: %v", addr, err)
 	}

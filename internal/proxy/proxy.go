@@ -33,7 +33,7 @@ type Server struct {
 	wg           sync.WaitGroup
 	keyLock      *keyedMutex
 	mu           sync.Mutex
-	stopOnce     sync.Once
+	stopped      bool
 	activeConns  map[net.Conn]struct{}
 	activeMu     sync.Mutex
 	tlsConfig    *tls.Config
@@ -63,6 +63,14 @@ func (s *Server) SetDrainTimeout(d time.Duration) {
 func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.stopped {
+		return fmt.Errorf("server is already stopped")
+	}
+	if s.listener != nil {
+		return fmt.Errorf("server is already running")
+	}
+
 
 	// Initialize TLS if enabled
 	if s.cfg.Proxy.TLS.Enabled {
@@ -152,37 +160,40 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 
 // Stop gracefully stops the proxy, draining active connections before terminating
 func (s *Server) Stop() error {
-	var stopErr error
-	s.stopOnce.Do(func() {
-		s.mu.Lock()
-		l := s.listener
-		s.listener = nil
+	s.mu.Lock()
+	if s.stopped {
 		s.mu.Unlock()
+		return nil
+	}
+	s.stopped = true
+	l := s.listener
+	s.listener = nil
+	s.mu.Unlock()
 
-		if l != nil {
-			stopErr = l.Close()
-		}
+	var stopErr error
+	if l != nil {
+		stopErr = l.Close()
+	}
 
-		if s.cfg.Proxy.SocketPath != "" {
-			_ = os.Remove(s.cfg.Proxy.SocketPath)
-		}
+	if s.cfg.Proxy.SocketPath != "" {
+		_ = os.Remove(s.cfg.Proxy.SocketPath)
+	}
 
-		// Graceful drain with timeout
-		drainDone := make(chan struct{})
-		go func() {
-			s.wg.Wait()
-			close(drainDone)
-		}()
+	// Graceful drain with timeout
+	drainDone := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(drainDone)
+	}()
 
-		select {
-		case <-drainDone:
-			// Drained gracefully
-		case <-time.After(s.drainTimeout):
-			// Timeout expired, forcefully close remaining active connections
-			s.closeActiveConns()
-			<-drainDone
-		}
-	})
+	select {
+	case <-drainDone:
+		// Drained gracefully
+	case <-time.After(s.drainTimeout):
+		// Timeout expired, forcefully close remaining active connections
+		s.closeActiveConns()
+		<-drainDone
+	}
 	return stopErr
 }
 
@@ -209,6 +220,22 @@ func (s *Server) closeActiveConns() {
 func (s *Server) acceptLoop(ctx context.Context) {
 	defer s.wg.Done()
 
+	stopWait := make(chan struct{})
+	defer close(stopWait)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.mu.Lock()
+			l := s.listener
+			s.mu.Unlock()
+			if l != nil {
+				_ = l.Close()
+			}
+		case <-stopWait:
+		}
+	}()
+
+
 	for {
 		s.mu.Lock()
 		l := s.listener
@@ -225,7 +252,7 @@ func (s *Server) acceptLoop(ctx context.Context) {
 				return
 			default:
 				s.mu.Lock()
-				isClosing := (s.listener == nil)
+				isClosing := (s.listener == nil || s.stopped)
 				s.mu.Unlock()
 				if isClosing {
 					return
@@ -352,7 +379,9 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		_, _ = clientConn.Write(pgwire.BuildErrorResponse("FATAL", "08006", errMsg))
 		return
 	}
+	s.addActiveConn(backendConn)
 	defer func() {
+		s.removeActiveConn(backendConn)
 		_ = backendConn.Close()
 	}()
 
@@ -384,6 +413,8 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 				log.Printf("[BranchBase Proxy] TLS server handshake error: %v", err)
 				return
 			}
+			s.addActiveConn(tlsConn)
+			defer s.removeActiveConn(tlsConn)
 			clientConn = tlsConn
 			packet, err = pgwire.ReadStartupPacket(clientConn)
 			if err != nil {
