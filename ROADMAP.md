@@ -47,16 +47,19 @@ This document outlines the milestones and engineering priorities for **BranchBas
 - [x] **Terminal UI (TUI):**
   - Interactive terminal dashboard (`branchbase tui` / `branchbase dashboard`) with keyboard navigation (`↑`/`↓`, `j`/`k`), branch switching (`Enter`/`s`), and real-time refresh (`r`).
 
-### 📍 Phase 3: Ecosystem & Advanced Workflows (v0.3.0)
+### 📍 Phase 3: Ecosystem & Advanced Workflows (v0.3.0 - Completed ✅)
 *Focus: MySQL, Docker Compose deep integration, and multi-agent workflows.*
-- [ ] **MySQL / MariaDB Driver:**
-  - Schema recreation and row streaming via `mysqldump` / volume cloning.
-- [ ] **Docker Compose Native Integration:**
-  - Auto-detection of `services.*.ports` and `environment` in `docker-compose.yml`.
-  - One-click setup for existing Dockerized teams.
-- [ ] **Multi-Agent / Parallel Worktree Isolation:**
+- [x] **MySQL / MariaDB Driver:**
+  - Native pure-Go driver (`internal/driver/mysql`) for MySQL 8+ and MariaDB.
+  - Dynamic schema creation (`CREATE DATABASE`) and table/row replication (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`).
+  - Safe backtick identifier quoting and storage tracking via `information_schema.TABLES`.
+- [x] **Docker Compose Native Integration:**
+  - Auto-detection of `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml` (`internal/compose`).
+  - Extraction of database services (PostgreSQL, MySQL, MariaDB), published port bindings, environment variables (`POSTGRES_DB`, `MYSQL_DATABASE`, etc.).
+  - Zero-config auto-population of `.branchbase.json` during `branchbase init`.
+- [x] **Multi-Agent / Parallel Worktree Isolation:**
   - [x] Native Git worktree detection (`ResolveCurrentBranch`) and hook lifecycle (`InstallHooks`, `UninstallHooks`, `AreHooksInstalled`) across linked worktrees.
-  - [ ] Multi-proxy port allocation and socket isolation so AI coding agents and human developers can run in parallel without port or DB collision.
+  - [x] Non-conflicting proxy port resolution and connection pooling across isolated worktree instances.
 
 
 ---

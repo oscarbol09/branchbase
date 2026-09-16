@@ -474,3 +474,47 @@ func TestRunTUIWithSqlite(t *testing.T) {
 		t.Fatalf("expected output to contain dashboard header, got: %s", outStr)
 	}
 }
+
+func TestRunInitWithDockerComposeAutoDetection(t *testing.T) {
+	dir := t.TempDir()
+
+	composeContent := `
+services:
+  db:
+    image: postgres:15
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: compose_user
+      POSTGRES_PASSWORD: compose_password
+      POSTGRES_DB: compose_app_dev
+`
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	runInit(dir)
+
+	cfgPath := filepath.Join(dir, ".branchbase.json")
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		t.Fatalf("expected .branchbase.json to be created")
+	}
+
+	loaded, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("failed to load generated config: %v", err)
+	}
+
+	if loaded.Driver != "postgres" {
+		t.Errorf("loaded.Driver = %q, want postgres", loaded.Driver)
+	}
+	if loaded.Connection.Port != 5433 {
+		t.Errorf("loaded.Connection.Port = %d, want 5433", loaded.Connection.Port)
+	}
+	if loaded.Connection.User != "compose_user" {
+		t.Errorf("loaded.Connection.User = %q, want compose_user", loaded.Connection.User)
+	}
+	if loaded.Connection.BaseDatabase != "compose_app_dev" {
+		t.Errorf("loaded.Connection.BaseDatabase = %q, want compose_app_dev", loaded.Connection.BaseDatabase)
+	}
+}

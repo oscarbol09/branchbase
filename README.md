@@ -99,11 +99,14 @@ branchbase/
 │   └── branchbase/
 │       └── main.go               # CLI entry point (subcommands & signal handling)
 ├── internal/
+│   ├── compose/                  # Docker Compose auto-detection & environment parser
 │   ├── config/                   # Configuration loader (.branchbase.json / .yaml)
 │   ├── driver/                   # Database engine interfaces & registry
 │   │   ├── driver.go             # Core Driver interface contract
+│   │   ├── mysql/                # MySQL & MariaDB engine (table cloning & metadata)
 │   │   ├── postgres/             # PostgreSQL engine (TEMPLATE cloning)
 │   │   └── sqlite/               # SQLite engine (CoW / Reflink snapshots)
+│   ├── tui/                      # Interactive Terminal UI (ANSI dashboard)
 │   ├── git/                      # Git HEAD inspector and branch sanitization
 │   │   ├── resolver.go           # Non-subshell .git/HEAD resolution
 │   │   └── resolver_test.go      # Table-driven unit test suite
@@ -135,7 +138,9 @@ branchbase/
 2. **Identifier Sanitization:** Special characters like `/` or `-` in branch names (e.g. `feature/stripe-v2`) are converted into safe database identifiers (`feature_stripe_v2`).
 3. **Copy-on-Write Snapshot:**
    * **PostgreSQL:** Disconnects lingering connections to the template and executes `CREATE DATABASE <target> TEMPLATE <source>;` (instant CoW clone).
+   * **MySQL / MariaDB:** Dynamically clones schemas and tables (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`) with zero-downtime transactional consistency.
    * **SQLite:** Issues `PRAGMA wal_checkpoint(TRUNCATE);` and performs a filesystem reflink/clone (`clonefile()` or `FICLONE`).
+   * **Docker Compose:** Automatically inspects `docker-compose.yml` to configure database ports and credentials without manual input.
 4. **Transparent Routing:** When your backend app queries `localhost:5432`, the BranchBase proxy intercepts the connection, resolves the active branch database, and forwards traffic seamlessly.
 5. **Lifecycle Pruning:** Once a PR is merged into `main`, running `branchbase prune` removes the ephemeral database, freeing disk space.
 
