@@ -4,7 +4,6 @@ import (
 	"context"
 	"regexp"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/branchbase/branchbase/internal/driver"

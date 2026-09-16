@@ -180,7 +180,4 @@ func ApplyToConfig(cfg *config.Config, dbSvc *DatabaseService) {
 	cfg.Connection.Password = dbSvc.Password
 	cfg.Connection.BaseDatabase = dbSvc.Database
 
-	if dbSvc.Driver == "postgres" {
-		cfg.Connection.SSLMode = "disable"
-	}
 }
