@@ -48,7 +48,7 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - Interactive terminal dashboard (`branchbase tui` / `branchbase dashboard`) with keyboard navigation (`↑`/`↓`, `j`/`k`), branch switching (`Enter`/`s`), and real-time refresh (`r`).
 
 ### 📍 Phase 3: Ecosystem & Advanced Workflows (v0.3.0 - Completed ✅)
-*Focus: MySQL, Docker Compose deep integration, and multi-agent workflows.*
+*Focus: MySQL, Docker Compose deep integration, proxy hardening, and multi-agent workflows.*
 - [x] **MySQL / MariaDB Driver:**
   - Native pure-Go driver (`internal/driver/mysql`) for MySQL 8+ and MariaDB.
   - Dynamic schema creation (`CREATE DATABASE`) and table/row replication (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`).
@@ -57,6 +57,21 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - Auto-detection of `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml` (`internal/compose`).
   - Extraction of database services (PostgreSQL, MySQL, MariaDB), published port bindings, environment variables (`POSTGRES_DB`, `MYSQL_DATABASE`, etc.).
   - Zero-config auto-population of `.branchbase.json` during `branchbase init`.
+- [x] **Enterprise Proxy Hardening:**
+  - TLS/SSL client negotiation (`sslmode=require`) with self-signed ECDSA development certificates (#34).
+  - UNIX domain socket support for proxy listener and backend targets (`/tmp/.s.PGSQL.5432`) (#50).
+  - Graceful active connection draining with configurable timeout on proxy shutdown (#49).
+- [x] **macOS APFS Native Cloning:**
+  - `clonefile(2)` syscall for instant Copy-on-Write SQLite snapshots on APFS, with universal chunked copy fallback (#66).
+- [x] **CI/CD Quality Gates:**
+  - End-to-End integration test suite in GitHub Actions with live PostgreSQL 16 service container (#51).
+  - 8-job CI matrix: Ubuntu, macOS, Windows, Lint, Security Audit, E2E Integration.
+- [x] **Git Hook & CLI Robustness:**
+  - `nohup` protection against `SIGHUP` in hook script template (#65).
+  - `--skip-hooks` / `--no-hooks` flag in `branchbase init` (#45).
+  - Branch metadata tracking and `ErrBranchNameCollision` guard in database drivers (#60).
+- [x] **Prisma ORM Integration Guide:**
+  - Complete developer guide for using BranchBase with Prisma ORM (`docs/guides/prisma.md`) (#21).
 - [x] **Multi-Agent / Parallel Worktree Isolation:**
   - [x] Native Git worktree detection (`ResolveCurrentBranch`) and hook lifecycle (`InstallHooks`, `UninstallHooks`, `AreHooksInstalled`) across linked worktrees.
   - [x] Non-conflicting proxy port resolution and connection pooling across isolated worktree instances.
