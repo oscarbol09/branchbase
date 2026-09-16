@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.3.0] - 2026-09-16
+
+### Highlights
+- **Interactive Terminal UI (TUI) Dashboard (`branchbase tui`)**: Pure-Go zero-dependency dashboard with real-time database inspection and keyboard switching (#74).
+- **Multi-Engine Driver Architecture**: Support for PostgreSQL 14+, MySQL 8.0+, MariaDB, and SQLite with native APFS `clonefile(2)` CoW snapshots on macOS (#75, #66).
+- **Enterprise Proxy Hardening**: Full PostgreSQL wire protocol rewriting, TLS negotiation (`sslmode=require`), UNIX domain sockets (`/tmp/.s.PGSQL.5432`), and graceful active connection draining (#50, #49, #34).
+- **CI/CD Quality Gates & Live PostgreSQL Integration**: Dedicated E2E integration test suite in GitHub Actions running with live PostgreSQL 16 service container (#51).
+- **Git Hooks & CLI Robustness**: Protection against `SIGHUP` using `nohup`, `--skip-hooks` support in `branchbase init`, and automatic Docker Compose detection (#65, #45, #75).
 
 ### Security
 - Standard SQL identifier quoting via `pq.QuoteIdentifier` in `CreateBranch` and `DeleteBranch`, preventing quoting discrepancies in PostgreSQL (#71).
