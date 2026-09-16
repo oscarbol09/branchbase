@@ -48,8 +48,15 @@ func NewServer(cfg *config.Config, repoPath string, drv driver.Driver) *Server {
 		drv:          drv,
 		keyLock:      newKeyedMutex(),
 		activeConns:  make(map[net.Conn]struct{}),
-		drainTimeout: 3 * time.Second,
+		drainTimeout: 500 * time.Millisecond,
 	}
+}
+
+// SetDrainTimeout configures the maximum duration to wait for active connections to drain
+func (s *Server) SetDrainTimeout(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.drainTimeout = d
 }
 
 // Start begins listening on the configured TCP port or UNIX socket and routing traffic
@@ -290,18 +297,18 @@ func (s *Server) ensureBranchExists(targetBranch, defaultBranch string) error {
 func (s *Server) dialBackend() (net.Conn, string, error) {
 	socketPath := s.cfg.Connection.SocketPath
 	if socketPath != "" {
-		conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
+		conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 		return conn, socketPath, err
 	}
 
 	host := s.cfg.Connection.Host
 	if strings.HasPrefix(host, "/") {
-		conn, err := net.DialTimeout("unix", host, 5*time.Second)
+		conn, err := net.DialTimeout("unix", host, 2*time.Second)
 		return conn, host, err
 	}
 
 	backendAddr := net.JoinHostPort(host, fmt.Sprintf("%d", s.cfg.Connection.Port))
-	conn, err := net.DialTimeout("tcp", backendAddr, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", backendAddr, 2*time.Second)
 	return conn, backendAddr, err
 }
 
@@ -411,28 +418,18 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}
 
 	// 4. Bidirectional streaming
-	var transferWg sync.WaitGroup
-	transferWg.Add(2)
-
+	errc := make(chan error, 2)
 	go func() {
-		defer transferWg.Done()
-		_, _ = io.Copy(backendConn, clientConn)
-		if tcpBack, ok := backendConn.(*net.TCPConn); ok {
-			_ = tcpBack.CloseWrite()
-		} else {
-			_ = backendConn.Close()
-		}
+		_, err := io.Copy(backendConn, clientConn)
+		errc <- err
+	}()
+	go func() {
+		_, err := io.Copy(clientConn, backendConn)
+		errc <- err
 	}()
 
-	go func() {
-		defer transferWg.Done()
-		_, _ = io.Copy(clientConn, backendConn)
-		if tcpCli, ok := clientConn.(*net.TCPConn); ok {
-			_ = tcpCli.CloseWrite()
-		} else {
-			_ = clientConn.Close()
-		}
-	}()
-
-	transferWg.Wait()
+	<-errc
+	_ = clientConn.Close()
+	_ = backendConn.Close()
+	<-errc
 }
