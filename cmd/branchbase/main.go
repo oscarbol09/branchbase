@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/branchbase/branchbase/internal/compose"
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
-	_ "github.com/branchbase/branchbase/internal/driver/postgres"
 	_ "github.com/branchbase/branchbase/internal/driver/mysql"
+	_ "github.com/branchbase/branchbase/internal/driver/postgres"
 	_ "github.com/branchbase/branchbase/internal/driver/sqlite"
-	"github.com/branchbase/branchbase/internal/compose"
 	"github.com/branchbase/branchbase/internal/git"
 	"github.com/branchbase/branchbase/internal/hook"
 	"github.com/branchbase/branchbase/internal/proxy"
@@ -48,6 +48,7 @@ Hook Management:
 
 Other:
   version       Print the version of BranchBase
+  completion    Print shell completion script (bash|zsh|fish|powershell)
   help          Show help for command
 
 Run 'branchbase <command> --help' for more information.`)
@@ -149,6 +150,12 @@ func main() {
 			subcmd = os.Args[2]
 		}
 		runHooks(cwd, subcmd)
+
+	case "completion":
+		runCompletion(os.Args[2:])
+
+	case "__complete":
+		runComplete(cwd, os.Args[2:])
 
 	case "hook-trigger":
 		runHookTrigger(cwd, os.Args[2:])
@@ -728,7 +735,6 @@ func runHookTrigger(cwd string, args []string) {
 	if err != nil || !cfg.Strategy.SnapshotOnSwitch {
 		return
 	}
-
 
 	branch, err := git.ResolveCurrentBranch(cwd)
 	if err != nil || branch == "" {
