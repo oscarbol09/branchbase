@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -160,6 +161,9 @@ func TestCompletionBinaryEndToEnd(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "branchbase")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "."
 	if out, err := build.CombinedOutput(); err != nil {
