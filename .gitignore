@@ -31,3 +31,7 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Documentation build & scratch
+site/
+scratch/

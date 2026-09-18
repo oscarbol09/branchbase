@@ -41,7 +41,8 @@ jobs:
 
       - name: Build MkDocs Site
         run: |
-          # Copy root markdown files into docs folder for site navigation if needed
+          mkdir -p docs/assets
+          cp -r assets/* docs/assets/
           cp ARCHITECTURE.md docs/architecture.md
           cp CONTRIBUTING.md docs/contributing.md
           cp CODE_OF_CONDUCT.md docs/code-of-conduct.md

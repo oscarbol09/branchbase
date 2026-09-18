@@ -6,7 +6,7 @@
 ---
 
 <p align="center">
-  <img src="../assets/terminal-demo.svg" alt="BranchBase Terminal Demo" width="800">
+  <img src="assets/terminal-demo.svg" alt="BranchBase Terminal Demo" width="800">
 </p>
 
 ---
