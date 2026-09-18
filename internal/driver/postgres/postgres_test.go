@@ -463,7 +463,7 @@ func TestDSN(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "full config with password",
+			name: "full config with password uses maintenance db",
 			cfg: Config{
 				Host:         "db.internal",
 				Port:         5433,
@@ -472,14 +472,14 @@ func TestDSN(t *testing.T) {
 				BaseDatabase: "prod_db",
 				SSLMode:      "require",
 			},
-			expected: "postgres://admin:secret123@db.internal:5433/prod_db?sslmode=require",
+			expected: "postgres://admin:secret123@db.internal:5433/postgres?sslmode=require",
 		},
 		{
 			name: "defaults applied",
 			cfg: Config{
 				BaseDatabase: "myapp_dev",
 			},
-			expected: "postgres://127.0.0.1:5432/myapp_dev?sslmode=disable",
+			expected: "postgres://127.0.0.1:5432/postgres?sslmode=disable",
 		},
 		{
 			name: "user without password",
@@ -490,7 +490,19 @@ func TestDSN(t *testing.T) {
 				BaseDatabase: "dev_db",
 				SSLMode:      "disable",
 			},
-			expected: "postgres://postgres@localhost:5432/dev_db?sslmode=disable",
+			expected: "postgres://postgres@localhost:5432/postgres?sslmode=disable",
+		},
+		{
+			name: "base database postgres uses template1",
+			cfg: Config{
+				BaseDatabase: "postgres",
+			},
+			expected: "postgres://127.0.0.1:5432/template1?sslmode=disable",
+		},
+		{
+			name:     "empty base database uses postgres",
+			cfg:      Config{},
+			expected: "postgres://127.0.0.1:5432/postgres?sslmode=disable",
 		},
 	}
 
