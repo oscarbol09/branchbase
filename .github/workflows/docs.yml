@@ -1,0 +1,63 @@
+name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs & Material Theme
+        run: |
+          pip install mkdocs-material mkdocs-minify-plugin
+
+      - name: Build MkDocs Site
+        run: |
+          # Copy root markdown files into docs folder for site navigation if needed
+          cp ARCHITECTURE.md docs/architecture.md
+          cp CONTRIBUTING.md docs/contributing.md
+          cp CODE_OF_CONDUCT.md docs/code-of-conduct.md
+          cp SECURITY.md docs/security.md
+          cp ROADMAP.md docs/roadmap.md
+          cp CHANGELOG.md docs/changelog.md
+          mkdocs build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

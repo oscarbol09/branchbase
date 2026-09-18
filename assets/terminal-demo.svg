@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" width="100%" height="100%">
+  <defs>
+    <linearGradient id="termBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117" />
+      <stop offset="100%" stop-color="#161b22" />
+    </linearGradient>
+    <filter id="termShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+  </defs>
+
+  <!-- Terminal Window Container -->
+  <rect x="20" y="20" width="860" height="440" rx="12" fill="url(#termBg)" stroke="#30363d" stroke-width="2" filter="url(#termShadow)" />
+
+  <!-- Terminal Window Header Bar -->
+  <path d="M20,20 L880,20 Q880,20 880,56 L20,56 Z" fill="#161b22" />
+  <line x1="20" y1="56" x2="880" y2="56" stroke="#30363d" stroke-width="1" />
+
+  <!-- Window Controls (Traffic Lights) -->
+  <circle cx="45" cy="38" r="6" fill="#ff5f56" stroke="#e0443e" stroke-width="0.5" />
+  <circle cx="65" cy="38" r="6" fill="#ffbd2e" stroke="#dea123" stroke-width="0.5" />
+  <circle cx="85" cy="38" r="6" fill="#27c93f" stroke="#1aab29" stroke-width="0.5" />
+  
+  <!-- Window Title -->
+  <text x="450" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace" font-size="12" fill="#8b949e" text-anchor="middle" font-weight="500">
+    branchbase demo — zsh
+  </text>
+
+  <!-- Terminal Content -->
+  <g font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, 'Courier New', monospace" font-size="13" line-height="22">
+    <!-- Step 1: Initialize -->
+    <g transform="translate(45, 85)">
+      <text x="0" y="0" fill="#7ee787">➜</text>
+      <text x="20" y="0" fill="#79c0ff">my-app</text>
+      <text x="80" y="0" fill="#d2a8ff">(main)</text>
+      <text x="145" y="0" fill="#f0f6fc" font-weight="600">branchbase init</text>
+      
+      <text x="20" y="22" fill="#3fb950">✔</text>
+      <text x="40" y="22" fill="#c9d1d9">Detected Docker Compose: <tspan fill="#58a6ff">postgres:16</tspan> (port 5432)</text>
+      <text x="20" y="42" fill="#3fb950">✔</text>
+      <text x="40" y="42" fill="#c9d1d9">Base database set to: <tspan fill="#58a6ff">myapp_dev</tspan></text>
+      <text x="20" y="62" fill="#3fb950">✔</text>
+      <text x="40" y="62" fill="#c9d1d9">Installed Git hooks into <tspan fill="#79c0ff">.git/hooks/post-checkout</tspan></text>
+    </g>
+
+    <!-- Step 2: Switch Git Branch -->
+    <g transform="translate(45, 175)">
+      <text x="0" y="0" fill="#7ee787">➜</text>
+      <text x="20" y="0" fill="#79c0ff">my-app</text>
+      <text x="80" y="0" fill="#d2a8ff">(main)</text>
+      <text x="145" y="0" fill="#f0f6fc" font-weight="600">git checkout -b feature/stripe-billing</text>
+
+      <text x="20" y="22" fill="#8b949e">Switched to a new branch 'feature/stripe-billing'</text>
+      <text x="20" y="42" fill="#3fb950">🌿 [BranchBase]</text>
+      <text x="160" y="42" fill="#c9d1d9">Cloned branch DB <tspan fill="#7ee787">myapp_dev_feature_stripe_billing</tspan> via TEMPLATE <tspan fill="#8b949e">(12ms)</tspan></text>
+    </g>
+
+    <!-- Step 3: Run Migrations -->
+    <g transform="translate(45, 245)">
+      <text x="0" y="0" fill="#7ee787">➜</text>
+      <text x="20" y="0" fill="#79c0ff">my-app</text>
+      <text x="80" y="0" fill="#d2a8ff">(feature/stripe-billing)</text>
+      <text x="310" y="0" fill="#f0f6fc" font-weight="600">npx prisma migrate dev</text>
+
+      <text x="20" y="22" fill="#3fb950">✔</text>
+      <text x="40" y="22" fill="#c9d1d9">Applying migration <tspan fill="#58a6ff">20260918_add_billing_table</tspan> ... <tspan fill="#7ee787">Done!</tspan></text>
+    </g>
+
+    <!-- Step 4: Switch Back with Zero Conflicts -->
+    <g transform="translate(45, 295)">
+      <text x="0" y="0" fill="#7ee787">➜</text>
+      <text x="20" y="0" fill="#79c0ff">my-app</text>
+      <text x="80" y="0" fill="#d2a8ff">(feature/stripe-billing)</text>
+      <text x="310" y="0" fill="#f0f6fc" font-weight="600">git checkout main</text>
+
+      <text x="20" y="22" fill="#8b949e">Switched to branch 'main'</text>
+      <text x="20" y="42" fill="#3fb950">🌿 [BranchBase]</text>
+      <text x="160" y="42" fill="#c9d1d9">Proxy transparently routing <tspan fill="#58a6ff">localhost:5432</tspan> ➔ <tspan fill="#7ee787">myapp_dev</tspan></text>
+      <text x="20" y="62" fill="#ffa657">✨ No migration conflicts! No docker compose down -v required!</text>
+    </g>
+
+    <!-- Cursor prompt -->
+    <g transform="translate(45, 385)">
+      <text x="0" y="0" fill="#7ee787">➜</text>
+      <text x="20" y="0" fill="#79c0ff">my-app</text>
+      <text x="80" y="0" fill="#d2a8ff">(main)</text>
+      <rect x="145" y="-12" width="9" height="16" fill="#58a6ff" />
+    </g>
+  </g>
+</svg>
