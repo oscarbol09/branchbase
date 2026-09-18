@@ -111,6 +111,24 @@ func ResolveLocalBranches(repoPath string) ([]string, error) {
 	return resolveLocalBranchesFromFS(repoPath)
 }
 
+// resolveGitCommonDir returns the directory that holds shared refs (refs/heads,
+// packed-refs). Linked worktrees store those in the path named by commondir,
+// not in .git/worktrees/<name>.
+func resolveGitCommonDir(gitDir string) string {
+	raw, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return gitDir
+	}
+	common := strings.TrimSpace(string(raw))
+	if common == "" {
+		return gitDir
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(gitDir, common)
+	}
+	return filepath.Clean(common)
+}
+
 func resolveLocalBranchesFromFS(repoPath string) ([]string, error) {
 	gitDir := filepath.Join(repoPath, ".git")
 	fi, err := os.Stat(gitDir)
@@ -132,11 +150,13 @@ func resolveLocalBranchesFromFS(repoPath string) ([]string, error) {
 		}
 	}
 
+	commonDir := resolveGitCommonDir(gitDir)
+
 	seen := make(map[string]bool)
 	var branches []string
 
-	// 1. Walk .git/refs/heads
-	headsDir := filepath.Join(gitDir, "refs", "heads")
+	// 1. Walk .git/refs/heads (common dir for linked worktrees)
+	headsDir := filepath.Join(commonDir, "refs", "heads")
 	if headsInfo, err := os.Stat(headsDir); err == nil && headsInfo.IsDir() {
 		_ = filepath.Walk(headsDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
@@ -154,8 +174,8 @@ func resolveLocalBranchesFromFS(repoPath string) ([]string, error) {
 		})
 	}
 
-	// 2. Parse .git/packed-refs
-	packedPath := filepath.Join(gitDir, "packed-refs")
+	// 2. Parse .git/packed-refs (common dir for linked worktrees)
+	packedPath := filepath.Join(commonDir, "packed-refs")
 	if bytes, err := os.ReadFile(packedPath); err == nil {
 		lines := strings.Split(string(bytes), "\n")
 		const prefix = "refs/heads/"
