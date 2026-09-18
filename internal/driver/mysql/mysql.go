@@ -200,9 +200,27 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		return fmt.Errorf("failed to create database %q: %w", targetDB, err)
 	}
 
+	// Hold one session for SET FOREIGN_KEY_CHECKS + table copies. Pool connections
+	// would otherwise apply the session variable to a different connection than
+	// the INSERT (Error 1452 when a child table is copied before its parent).
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to reserve mysql connection: %w", err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	if _, err := conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=0"); err != nil {
+		return fmt.Errorf("failed to disable foreign key checks: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), "SET FOREIGN_KEY_CHECKS=1")
+	}()
+
 	// Step 2: Query tables from source database
 	tableQuery := "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'"
-	rows, err := d.db.QueryContext(ctx, tableQuery, sourceDB)
+	rows, err := conn.QueryContext(ctx, tableQuery, sourceDB)
 	if err != nil {
 		return fmt.Errorf("failed to list tables in %q: %w", sourceDB, err)
 	}
@@ -221,6 +239,9 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 
 	// Step 3: Clone each table structure and copy data
 	for _, tbl := range tables {
@@ -228,12 +249,12 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		qSourceTbl := fmt.Sprintf("%s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(tbl))
 
 		createTblSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s LIKE %s;", qTargetTbl, qSourceTbl)
-		if _, err := d.db.ExecContext(ctx, createTblSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, createTblSQL); err != nil {
 			return fmt.Errorf("failed to create table %q: %w", tbl, err)
 		}
 
 		insertDataSQL := fmt.Sprintf("INSERT INTO %s SELECT * FROM %s;", qTargetTbl, qSourceTbl)
-		if _, err := d.db.ExecContext(ctx, insertDataSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, insertDataSQL); err != nil {
 			return fmt.Errorf("failed to copy data for table %q: %w", tbl, err)
 		}
 	}
