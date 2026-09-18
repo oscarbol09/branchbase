@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 
@@ -96,25 +97,68 @@ func TestMySQLCreateBranch(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE IF NOT EXISTS `myapp_dev_feature_b`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=0")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
 	// Expect list tables in source database
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'")).
 		WithArgs("myapp_dev").
-		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("users").AddRow("orders"))
+		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("orders").AddRow("users"))
 
-	// Expect table cloning for users
-	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`users` LIKE `myapp_dev`.`users`;")).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`users` SELECT * FROM `myapp_dev`.`users`;")).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// Expect table cloning for orders
+	// Child table first: copy must still succeed with FOREIGN_KEY_CHECKS off.
 	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`orders` LIKE `myapp_dev`.`orders`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` SELECT * FROM `myapp_dev`.`orders`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`users` LIKE `myapp_dev`.`users`;")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`users` SELECT * FROM `myapp_dev`.`users`;")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=1")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
 	if err := drv.CreateBranch(ctx, "main", "feature/b"); err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet mock expectations: %v", err)
+	}
+}
+
+func TestMySQLCreateBranchRestoresForeignKeyChecksOnInsertError(t *testing.T) {
+	t.Parallel()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to open sqlmock: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	drv := NewWithDB(Config{BaseDatabase: "myapp_dev"}, db)
+	ctx := context.Background()
+	insertErr := errors.New("Error 1452: Cannot add or update a child row: a foreign key constraint fails")
+
+	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE IF NOT EXISTS `myapp_dev_feature_b`;")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=0")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'")).
+		WithArgs("myapp_dev").
+		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("orders"))
+	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`orders` LIKE `myapp_dev`.`orders`;")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` SELECT * FROM `myapp_dev`.`orders`;")).
+		WillReturnError(insertErr)
+	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=1")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = drv.CreateBranch(ctx, "main", "feature/b")
+	if err == nil {
+		t.Fatal("expected CreateBranch error, got nil")
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
