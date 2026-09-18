@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Compare `DatabaseNameForBranch` against a sanitized `DefaultBranch` so names like `release/v1` resolve to the base database instead of `base_release_v1` (#91).
+
 ## [0.3.0] - 2026-09-16
 
 ### Highlights

@@ -19,26 +19,31 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestDatabaseNameForBranch(t *testing.T) {
 	t.Parallel()
-	cfg := DefaultConfig()
-	cfg.Connection.BaseDatabase = "myapp_dev"
-	cfg.Proxy.DefaultBranch = "main"
 
 	tests := []struct {
+		name     string
+		defaultB string
 		branch   string
 		expected string
 	}{
-		{"main", "myapp_dev"},
-		{"", "myapp_dev"},
-		{"feature_billing", "myapp_dev_feature_billing"},
-		{"hotfix_login", "myapp_dev_hotfix_login"},
+		{name: "main default", defaultB: "main", branch: "main", expected: "myapp_dev"},
+		{name: "empty branch", defaultB: "main", branch: "", expected: "myapp_dev"},
+		{name: "feature", defaultB: "main", branch: "feature_billing", expected: "myapp_dev_feature_billing"},
+		{name: "hotfix", defaultB: "main", branch: "hotfix_login", expected: "myapp_dev_hotfix_login"},
+		{name: "slash default matches sanitized", defaultB: "release/v1", branch: "release_v1", expected: "myapp_dev"},
+		{name: "slash default other branch", defaultB: "release/v1", branch: "feature_x", expected: "myapp_dev_feature_x"},
+		{name: "hyphen default matches sanitized", defaultB: "master-staging", branch: "master_staging", expected: "myapp_dev"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.branch, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			cfg := DefaultConfig()
+			cfg.Connection.BaseDatabase = "myapp_dev"
+			cfg.Proxy.DefaultBranch = tt.defaultB
 			got := cfg.DatabaseNameForBranch(tt.branch)
 			if got != tt.expected {
-				t.Errorf("DatabaseNameForBranch(%q) = %q; want %q", tt.branch, got, tt.expected)
+				t.Errorf("DatabaseNameForBranch(%q) with DefaultBranch %q = %q; want %q", tt.branch, tt.defaultB, got, tt.expected)
 			}
 		})
 	}
@@ -212,4 +217,3 @@ connection:
 		t.Errorf("expected base_database 'yml_app_dev', got %q", loaded.Connection.BaseDatabase)
 	}
 }
-

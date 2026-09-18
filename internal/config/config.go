@@ -5,8 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/branchbase/branchbase/internal/git"
 	"gopkg.in/yaml.v3"
 )
 
@@ -122,9 +122,12 @@ func (c *Config) SaveJSON(filePath string) error {
 	return os.WriteFile(filePath, bytes, 0644)
 }
 
-// DatabaseNameForBranch returns the target database identifier for a given branch
+// DatabaseNameForBranch returns the target database identifier for a given branch.
+// sanitizedBranch is the already-sanitized Git branch (see git.SanitizeBranchName).
+// DefaultBranch is compared after the same sanitization so names like "release/v1"
+// match "release_v1" and resolve to the base database.
 func (c *Config) DatabaseNameForBranch(sanitizedBranch string) string {
-	if sanitizedBranch == "" || sanitizedBranch == strings.ToLower(c.Proxy.DefaultBranch) {
+	if sanitizedBranch == "" || sanitizedBranch == git.SanitizeBranchName(c.Proxy.DefaultBranch) {
 		return c.Connection.BaseDatabase
 	}
 	return c.Connection.BaseDatabase + "_" + sanitizedBranch
