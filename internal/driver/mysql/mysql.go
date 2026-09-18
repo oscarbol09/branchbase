@@ -222,18 +222,33 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		return err
 	}
 
-	// Step 3: Clone each table structure and copy data
+	// Step 3: Clone each table structure and copy data.
+	// Pin one session and disable FOREIGN_KEY_CHECKS so child tables can
+	// be copied before their parents (information_schema order is arbitrary).
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get mysql connection: %w", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 0"); err != nil {
+		return fmt.Errorf("failed to disable foreign key checks: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), "SET FOREIGN_KEY_CHECKS = 1")
+	}()
+
 	for _, tbl := range tables {
 		qTargetTbl := fmt.Sprintf("%s.%s", QuoteIdentifier(targetDB), QuoteIdentifier(tbl))
 		qSourceTbl := fmt.Sprintf("%s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(tbl))
 
 		createTblSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s LIKE %s;", qTargetTbl, qSourceTbl)
-		if _, err := d.db.ExecContext(ctx, createTblSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, createTblSQL); err != nil {
 			return fmt.Errorf("failed to create table %q: %w", tbl, err)
 		}
 
 		insertDataSQL := fmt.Sprintf("INSERT INTO %s SELECT * FROM %s;", qTargetTbl, qSourceTbl)
-		if _, err := d.db.ExecContext(ctx, insertDataSQL); err != nil {
+		if _, err := conn.ExecContext(ctx, insertDataSQL); err != nil {
 			return fmt.Errorf("failed to copy data for table %q: %w", tbl, err)
 		}
 	}
