@@ -40,7 +40,19 @@ var defaultPoolConfig = PoolConfig{
 	ConnMaxLifetime: 5 * time.Minute,
 }
 
-// DSN returns the PostgreSQL connection URL string for the pgx driver
+// adminDatabase is the catalog the driver pool connects to for CREATE/DROP DATABASE.
+// Connecting to cfg.BaseDatabase leaves idle sessions on the TEMPLATE source and
+// PostgreSQL rejects the clone with "source database is being accessed by other users".
+func (c Config) adminDatabase() string {
+	if strings.EqualFold(c.BaseDatabase, "postgres") {
+		return "template1"
+	}
+	return "postgres"
+}
+
+// DSN returns the PostgreSQL connection URL for the administrative pool.
+// The path is the maintenance database (postgres, or template1 when BaseDatabase
+// is already postgres), not the user database that TEMPLATE clone copies.
 func (c Config) DSN() string {
 	host := c.Host
 	if host == "" {
@@ -50,10 +62,7 @@ func (c Config) DSN() string {
 	if port <= 0 {
 		port = 5432
 	}
-	dbName := c.BaseDatabase
-	if dbName == "" {
-		dbName = "postgres"
-	}
+	dbName := c.adminDatabase()
 	sslMode := c.SSLMode
 	if sslMode == "" {
 		sslMode = "disable"
@@ -362,4 +371,3 @@ func (d *PostgresDriver) formatDBName(branch string) string {
 	}
 	return fmt.Sprintf("%s_%s", d.cfg.BaseDatabase, sanitized)
 }
-
