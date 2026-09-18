@@ -1,15 +1,16 @@
-# BranchBase 🌿
+<p align="center">
+  <img src="assets/banner.svg" alt="BranchBase Banner" width="100%">
+</p>
 
-> **Zero-config, Git-native local database branching for PostgreSQL, MySQL, and SQLite.**  
-> Stop dropping your local database every time you switch Git branches.
-
-[![BranchBase CI](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml/badge.svg)](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Good First Issues](https://img.shields.io/github/issues/oscarbol09/branchbase/good%20first%20issue?color=7057ff&label=good%20first%20issues)](https://github.com/oscarbol09/branchbase/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/oscarbol09)
-[![Support on Ko-Fi](https://img.shields.io/badge/Support-Ko--Fi-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/oscarmb09)
+<p align="center">
+  <a href="https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml"><img src="https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://github.com/oscarbol09/branchbase/releases/latest"><img src="https://img.shields.io/github/v/release/oscarbol09/branchbase?color=7057ff&logo=github" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  <a href="https://github.com/oscarbol09/branchbase/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><img src="https://img.shields.io/github/issues/oscarbol09/branchbase/good%20first%20issue?color=7057ff&label=good%20first%20issues" alt="Good First Issues"></a>
+  <a href="https://github.com/oscarbol09/branchbase"><img src="https://img.shields.io/github/stars/oscarbol09/branchbase?style=social" alt="GitHub Stars"></a>
+</p>
 
 ---
 
@@ -41,6 +42,10 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 
 **BranchBase** brings instant, zero-copy database branching directly to your **local machine and Docker containers**.
 
+<p align="center">
+  <img src="assets/terminal-demo.svg" alt="BranchBase Terminal Demo" width="850">
+</p>
+
 ```
                            +---------------------------+
                            |     Developer Machine     |
@@ -71,6 +76,87 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 - 🎣 **Automated Git Hook:** Hooks into `post-checkout` and `post-merge`. You simply use standard `git checkout` or `git switch`.
 - 🧹 **Automatic Cleanup (`prune`):** When you delete or merge a Git branch, `branchbase` safely tears down the associated ephemeral database.
 - 📴 **100% Local & Offline:** No cloud telemetry, no subscription fees, no internet needed.
+
+---
+
+## 🆚 Why BranchBase? (Comparison)
+
+| Feature | **BranchBase** 🌿 | **Neon** | **PlanetScale** | **lakeFS** | **Liquibase** |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **100% Local & Offline** | ✅ **Yes** | ❌ Cloud | ❌ Cloud | ❌ S3/ObjStore | ✅ Yes |
+| **PostgreSQL Support** | ✅ **Yes** (TEMPLATE) | ✅ Yes | ❌ Vitess | ❌ S3/Blobs | ✅ Yes |
+| **MySQL / MariaDB Support** | ✅ **Yes** (Table Clone) | ❌ No | ✅ Yes | ❌ S3/Blobs | ✅ Yes |
+| **SQLite Support (APFS/CoW)** | ✅ **Yes** | ❌ No | ❌ No | ❌ No | ✅ Yes |
+| **Git-Native Hook Automation** | ✅ **Yes** (`post-checkout`) | ❌ Manual | ❌ Manual | ❌ CLI only | ❌ Manual |
+| **Transparent TCP Wire Proxy** | ✅ **Yes** (Zero `.env` edits) | ❌ N/A | ❌ N/A | ❌ N/A | ❌ N/A |
+| **Interactive Terminal UI** | ✅ **Yes** (`branchbase tui`) | ❌ Web only | ❌ Web only | ❌ Web only | ❌ No |
+| **Docker Compose Auto-Detection**| ✅ **Yes** | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Cost / Licensing** | 💚 **Free & MIT** | 💳 Paid / Freemium | 💳 Paid / Freemium | 💚 Open Core | 💳 Paid / OSS |
+
+---
+
+## 📦 Installation
+
+### Homebrew (macOS & Linux)
+```bash
+brew install oscarbol09/branchbase/branchbase
+```
+
+### Go Toolchain (Go 1.22+)
+```bash
+go install github.com/oscarbol09/branchbase/cmd/branchbase@latest
+```
+
+### Pre-Compiled Binaries
+Download standalone cross-platform binaries directly from **[GitHub Releases](https://github.com/oscarbol09/branchbase/releases/latest)** for Linux, macOS (Intel & Apple Silicon), and Windows.
+
+### Build From Source
+```bash
+git clone https://github.com/oscarbol09/branchbase.git
+cd branchbase
+go build -o bin/branchbase ./cmd/branchbase
+sudo mv bin/branchbase /usr/local/bin/
+```
+
+---
+
+## 🛠️ Quickstart (60 Seconds)
+
+### 1. Initialize in your Repository
+```bash
+cd my-awesome-project
+branchbase init
+```
+
+### 2. Start the Transparent Proxy
+```bash
+branchbase proxy
+```
+
+### 3. Work with Git as you always do!
+```bash
+# Branch to a new feature:
+git checkout -b feature/stripe-billing
+
+# Run migrations freely:
+npx prisma migrate dev  # or rails db:migrate / alembic upgrade head
+
+# Switch back to main whenever you want:
+git checkout main
+# Proxy immediately routes traffic back to your main database! No migration errors!
+```
+
+### 4. Inspect Branch Status
+```bash
+# Human-readable summary
+branchbase status
+
+# Interactive Terminal Dashboard
+branchbase tui
+
+# Machine-readable JSON for prompt scripts, CI/CD, or status bars
+branchbase status --json
+```
 
 ---
 
@@ -174,41 +260,7 @@ type Driver interface {
 ## 📚 Framework Integration Guides
 
 - ◬ **[Prisma ORM Integration Guide](docs/guides/prisma.md)**: Zero-conflict database migrations with TypeScript & Node.js.
-
-## 🛠️ Quickstart
-
-### 1. Initialize in your Repository
-```bash
-cd my-awesome-project
-branchbase init
-```
-
-### 2. Start the Transparent Proxy
-```bash
-branchbase proxy
-```
-
-### 3. Work with Git as you always do!
-```bash
-# Branch to a new feature:
-git checkout -b feature/stripe-billing
-
-# Run migrations freely:
-npx prisma migrate dev  # or rails db:migrate / alembic upgrade head
-
-# Switch back to main whenever you want:
-git checkout main
-# Proxy immediately routes traffic back to your main database! No migration errors!
-```
-
-### 4. Inspect Branch Status
-```bash
-# Human-readable summary
-branchbase status
-
-# Machine-readable JSON for prompt scripts, CI/CD, or status bars
-branchbase status --json
-```
+- 🐳 **[Docker Compose Setup Guide](docs/guides/docker-compose.md)**: Zero-config containerized database branching.
 
 ---
 
@@ -223,20 +275,39 @@ Thinking about contributing? We'd love to have you!
 
 ---
 
-## 🛡️ Security
+## 🏆 Contributors
 
-To report a vulnerability privately, please see [SECURITY.md](SECURITY.md) or use [GitHub Private Vulnerability Reporting](https://github.com/oscarbol09/branchbase/security/advisories/new).
+Thank you to all the amazing developers who contribute to making BranchBase the best local-first database branching tool!
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+---
+
+## ⭐ Star History & Community Support
+
+If you find **BranchBase** useful in your daily development or it saved you hours of debugging migration mismatches, please consider giving us a star! It helps more developers discover the project.
+
+<p align="center">
+  <a href="https://github.com/oscarbol09/branchbase">
+    <img src="https://img.shields.io/github/stars/oscarbol09/branchbase?style=for-the-badge&logo=github&color=3fb950" alt="Star on GitHub">
+  </a>
+</p>
 
 ---
 
 ## 💖 Support & Sponsorship
 
-If you find **BranchBase** useful in your daily development or it saved you hours of debugging migration mismatches, consider supporting ongoing development:
+If BranchBase brings value to your team or organization, consider supporting ongoing maintenance:
 
 - 💖 **[Sponsor on GitHub Sponsors](https://github.com/sponsors/oscarbol09)**
 - ☕ **[Buy me a coffee on Ko-Fi](https://ko-fi.com/oscarmb09)**
 
-Your sponsorship helps fund test infrastructure, multi-database driver maintenance, and cross-platform packaging!
+---
+
+## 🛡️ Security
+
+To report a vulnerability privately, please see [SECURITY.md](SECURITY.md) or use [GitHub Private Vulnerability Reporting](https://github.com/oscarbol09/branchbase/security/advisories/new).
 
 ---
 
