@@ -241,3 +241,58 @@ func TestResolveLocalBranchesNotAGitRepo(t *testing.T) {
 	}
 }
 
+func TestResolveLocalBranchesFromFSWorktreeCommondir(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	// Main repo .git holds refs/heads and packed-refs.
+	mainGit := filepath.Join(tempDir, "main_repo", ".git")
+	headsDir := filepath.Join(mainGit, "refs", "heads", "feature")
+	if err := os.MkdirAll(headsDir, 0755); err != nil {
+		t.Fatalf("mkdir heads: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(mainGit, "refs", "heads", "main"), []byte("hash-main\n"), 0644); err != nil {
+		t.Fatalf("write main: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(headsDir, "auth"), []byte("hash-auth\n"), 0644); err != nil {
+		t.Fatalf("write feat: %v", err)
+	}
+	packed := "e02b7e1975e5330335e386992adbe813636f0de2 refs/heads/staging\n"
+	if err := os.WriteFile(filepath.Join(mainGit, "packed-refs"), []byte(packed), 0644); err != nil {
+		t.Fatalf("write packed-refs: %v", err)
+	}
+
+	// Linked worktree git dir: HEAD lives here; commondir points at main .git.
+	wtGit := filepath.Join(mainGit, "worktrees", "wt1")
+	if err := os.MkdirAll(wtGit, 0755); err != nil {
+		t.Fatalf("mkdir worktree git: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGit, "HEAD"), []byte("ref: refs/heads/feature/auth\n"), 0644); err != nil {
+		t.Fatalf("write worktree HEAD: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGit, "commondir"), []byte("../..\n"), 0644); err != nil {
+		t.Fatalf("write commondir: %v", err)
+	}
+
+	wtDir := filepath.Join(tempDir, "wt_copy")
+	if err := os.MkdirAll(wtDir, 0755); err != nil {
+		t.Fatalf("mkdir wt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wtDir, ".git"), []byte("gitdir: "+wtGit+"\n"), 0644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	branches, err := resolveLocalBranchesFromFS(wtDir)
+	if err != nil {
+		t.Fatalf("resolveLocalBranchesFromFS: %v", err)
+	}
+	got := make(map[string]bool, len(branches))
+	for _, b := range branches {
+		got[b] = true
+	}
+	for _, want := range []string{"main", "feature/auth", "staging"} {
+		if !got[want] {
+			t.Errorf("expected %q in branches, got %v", want, branches)
+		}
+	}
+}
