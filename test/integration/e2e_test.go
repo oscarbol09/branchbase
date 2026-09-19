@@ -94,11 +94,10 @@ func TestPostgreSQLE2EIntegration(t *testing.T) {
 	}
 	defer func() { _ = srv.Stop() }()
 
-	// 3. Connect client to Proxy on main branch
-	time.Sleep(200 * time.Millisecond)
-
-	// Switch branch to feature/payments
-	_ = os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/payments\n"), 0644)
+	// 3. Switch branch to feature/payments
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/payments\n"), 0644); err != nil {
+		t.Fatalf("failed to update git HEAD: %v", err)
+	}
 
 	// JIT create branch database
 	if err := pgDrv.CreateBranch(ctx, "main", "feature/payments"); err != nil {
@@ -114,7 +113,7 @@ func TestPostgreSQLE2EIntegration(t *testing.T) {
 	defer featDB.Close()
 
 	var count int
-	err = featDB.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	err = featDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&count)
 	if err != nil || count != 1 {
 		t.Fatalf("expected 1 cloned user in feature branch database, got count=%d, err=%v", count, err)
 	}

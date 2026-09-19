@@ -180,7 +180,7 @@ I got fed up with running `prisma migrate reset` or wiping Docker volumes during
 ### What it does:
 You point your `.env` `DATABASE_URL` to `localhost:5433` (BranchBase proxy) instead of `5432`.
 - When you are on `git checkout feature/auth`, you read/write to `mydb_feature_auth`.
-- When you `git checkout main`, your connection seamlessly routes back to `mydb_main`.
+- When you `git checkout main`, your connection transparently routes back to `mydb_main`.
 - When you delete or merge a branch, running `branchbase prune` wipes orphan databases.
 
 It's 100% local, runs as a single binary, supports PostgreSQL, MySQL, and SQLite, and is open source (MIT).

@@ -12,7 +12,7 @@ const sysClonefile = 532
 
 // CloneFile performs fast file snapshotting on macOS using the native APFS clonefile(2) syscall.
 // If the underlying filesystem does not support clonefile (e.g. HFS+ or external non-APFS mounts),
-// it falls back seamlessly to copyFileChunked.
+// it falls back to copyFileChunked.
 func CloneFile(src, dst string) error {
 	srcPtr, err := syscall.BytePtrFromString(src)
 	if err != nil {

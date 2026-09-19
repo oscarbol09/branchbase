@@ -67,7 +67,7 @@ def main():
             sanitized_active = active_branch.replace('/', '_').replace('-', '_')
 
             lines = []
-            lines.append(f"{BOLD}{GREEN}🌿 BranchBase Dashboard{RESET} {DIM}v0.2.0{RESET}")
+            lines.append(f"{BOLD}{GREEN}🌿 BranchBase Dashboard{RESET} {DIM}v0.3.0{RESET}")
             lines.append(f"{DIM}─────────────────────────────────────────────────────────────────────────────{RESET}")
             lines.append(f"  • {BOLD}{'Active Branch:':<16}{RESET} {BOLD}{CYAN}{active_branch}{RESET} (sanitized: {sanitized_active})")
             lines.append(f"  • {BOLD}{'Database Engine:':<16}{RESET} {BOLD}SQLite / PostgreSQL{RESET} (127.0.0.1:5433)")

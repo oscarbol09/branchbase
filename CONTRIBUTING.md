@@ -35,7 +35,7 @@ Here are some high-impact areas where we need collaboration:
 3. **CLI & Developer Experience:**
    - ✅ Git hook installation & integration tests — *Implemented.*
    - ✅ Interactive TUI (Terminal UI) dashboard — *Implemented.*
-   - 🔧 Autocompletion scripts (bash, zsh, fish) — *Open for contribution.*
+   - ✅ Autocompletion scripts (bash, zsh, fish, powershell) — *Implemented.*
    - 🔧 `branchbase doctor` diagnostic command — *Open for contribution.*
 4. **Documentation & Guides:**
    - ✅ Prisma ORM integration guide — *Implemented.*

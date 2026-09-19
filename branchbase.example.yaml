@@ -5,7 +5,7 @@
 version: "1"
 
 # Database engine to manage
-# Supported: postgres, sqlite (planned: mysql, mongodb)
+# Supported: postgres, mysql, mariadb, sqlite (planned: mongodb)
 driver: "postgres"
 
 # Target underlying database configuration (e.g. your local Docker container)
