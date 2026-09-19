@@ -1,4 +1,4 @@
-# Security Policy 🛡️
+# Security Policy
 
 The BranchBase team and community take the security and integrity of developer environments seriously.
 
@@ -8,9 +8,9 @@ Security fixes are applied to the active development branch (`main`) and release
 
 | Version | Supported |
 | :--- | :--- |
-| `0.3.x` | ✅ Yes |
-| `0.1.x` | ❌ No (Superseded) |
-| `< 0.1.0` | ❌ No |
+| `0.3.x` | Yes |
+| `0.1.x` | No (Superseded) |
+| `< 0.1.0` | No |
 
 ---
 
@@ -19,10 +19,10 @@ Security fixes are applied to the active development branch (`main`) and release
 If you discover a security vulnerability or sensitive data leak in BranchBase, **please do not disclose it publicly** in issues, discussions, or social media.
 
 Please submit a report privately through:
-👉 [**GitHub Private Vulnerability Reporting**](https://github.com/oscarbol09/branchbase/security/advisories/new)
+[**GitHub Private Vulnerability Reporting**](https://github.com/oscarbol09/branchbase/security/advisories/new)
 
 Alternatively, contact the lead maintainer directly at:
-📧 `omaderabolano@correo.unicordoba.edu.co`
+`omaderabolano@correo.unicordoba.edu.co`
 
 ### What to Include in Your Report
 To help us triage and resolve the issue quickly, please include:

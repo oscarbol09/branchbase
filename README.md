@@ -1,4 +1,4 @@
-# BranchBase 🌿
+# BranchBase
 
 > **Zero-config, Git-native local database branching for PostgreSQL, MySQL, and SQLite.**  
 > Stop dropping your local database every time you switch Git branches.
@@ -13,7 +13,7 @@
 
 ---
 
-## ⚡ The Problem: The "Git vs. Local Database" Friction
+## Problem Context: Git vs. Local Database Friction
 
 Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suffered this loop:
 
@@ -37,7 +37,7 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 
 ---
 
-## 🚀 The Solution: BranchBase
+## The Solution: BranchBase
 
 **BranchBase** brings instant, zero-copy database branching directly to your **local machine and Docker containers**.
 
@@ -66,15 +66,15 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 ```
 
 ### Key Highlights
-- ⚡ **Instant Branching:** Creates a fresh, isolated branch database in milliseconds using PostgreSQL `CREATE DATABASE ... TEMPLATE` or filesystem copy-on-write (reflink/APFS/Btrfs for SQLite).
-- 🔌 **Transparent Connection Proxy:** Your app's `DATABASE_URL=postgres://user:pass@localhost:5432/myapp` **never changes**. The local proxy automatically inspects which Git branch is active in your working directory and routes traffic to that branch's database.
-- 🎣 **Automated Git Hook:** Hooks into `post-checkout` and `post-merge`. You simply use standard `git checkout` or `git switch`.
-- 🧹 **Automatic Cleanup (`prune`):** When you delete or merge a Git branch, `branchbase` safely tears down the associated ephemeral database.
-- 📴 **100% Local & Offline:** No cloud telemetry, no subscription fees, no internet needed.
+- **Instant Branching:** Creates a fresh, isolated branch database in milliseconds using PostgreSQL `CREATE DATABASE ... TEMPLATE` or filesystem copy-on-write (reflink/APFS/Btrfs for SQLite).
+- **Transparent Connection Proxy:** Your app's `DATABASE_URL=postgres://user:pass@localhost:5432/myapp` **never changes**. The local proxy automatically inspects which Git branch is active in your working directory and routes traffic to that branch's database.
+- **Automated Git Hook:** Hooks into `post-checkout` and `post-merge`. You simply use standard `git checkout` or `git switch`.
+- **Automatic Cleanup (`prune`):** When you delete or merge a Git branch, `branchbase` safely tears down the associated ephemeral database.
+- **100% Local & Offline:** No cloud telemetry, no subscription fees, no internet needed.
 
 ---
 
-## 📖 Command & CLI Reference
+## Command & CLI Reference
 
 | Command | What it does |
 | :--- | :--- |
@@ -92,7 +92,7 @@ Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suff
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 branchbase/
@@ -133,7 +133,7 @@ branchbase/
 
 ---
 
-## ⚙️ How It Works (Step-by-Step)
+## How It Works
 
 1. **Detection:** When you run `git checkout <branch>`, BranchBase's hook (`.git/hooks/post-checkout`) detects the branch transition in under 5ms by reading `.git/HEAD`.
 2. **Identifier Sanitization:** Special characters like `/` or `-` in branch names (e.g. `feature/stripe-v2`) are converted into safe database identifiers (`feature_stripe_v2`).
@@ -147,7 +147,7 @@ branchbase/
 
 ---
 
-## 🧩 Extension Model: Adding a New Database Driver
+## Architecture: Adding a Database Driver
 
 External engines are pluggable by design. Adding a new database driver requires just 1 package and 1 interface implementation:
 
@@ -171,11 +171,11 @@ type Driver interface {
 
 ---
 
-## 📚 Framework Integration Guides
+## Framework Integration Guides
 
-- ◬ **[Prisma ORM Integration Guide](docs/guides/prisma.md)**: Zero-conflict database migrations with TypeScript & Node.js.
+- **[Prisma ORM Integration Guide](docs/guides/prisma.md)**: Zero-conflict database migrations with TypeScript & Node.js.
 
-## 🛠️ Quickstart
+## Quickstart
 
 ### 1. Initialize in your Repository
 ```bash
@@ -212,7 +212,7 @@ branchbase status --json
 
 ---
 
-## 🤝 Contributing & Community
+## Contributing & Community
 
 Thinking about contributing? We'd love to have you!
 
@@ -223,23 +223,23 @@ Thinking about contributing? We'd love to have you!
 
 ---
 
-## 🛡️ Security
+## Security
 
 To report a vulnerability privately, please see [SECURITY.md](SECURITY.md) or use [GitHub Private Vulnerability Reporting](https://github.com/oscarbol09/branchbase/security/advisories/new).
 
 ---
 
-## 💖 Support & Sponsorship
+## Support & Sponsorship
 
 If you find **BranchBase** useful in your daily development or it saved you hours of debugging migration mismatches, consider supporting ongoing development:
 
-- 💖 **[Sponsor on GitHub Sponsors](https://github.com/sponsors/oscarbol09)**
-- ☕ **[Buy me a coffee on Ko-Fi](https://ko-fi.com/oscarmb09)**
+- **[Sponsor on GitHub Sponsors](https://github.com/sponsors/oscarbol09)**
+- **[Support on Ko-Fi](https://ko-fi.com/oscarmb09)**
 
-Your sponsorship helps fund test infrastructure, multi-database driver maintenance, and cross-platform packaging!
+Your sponsorship helps fund test infrastructure, multi-database driver maintenance, and cross-platform packaging.
 
 ---
 
-## 📄 License
+## License
 
 Licensed under the [MIT License](LICENSE).

@@ -1,4 +1,4 @@
-# Development Environment Setup 💻
+# Development Environment Setup
 
 This guide walks you through setting up your local machine to build, test, and contribute to **BranchBase**.
 

@@ -1,18 +1,18 @@
-# BranchBase Roadmap 🗺️
+# BranchBase Roadmap
 
 This document outlines the milestones and engineering priorities for **BranchBase**.
 
 ---
 
-## 🎯 Release Milestones
+## Release Milestones
 
-### 📍 Phase 0: Project Inception & RFC (Completed ✅)
+### Phase 0: Project Inception & RFC (Completed)
 - [x] Initial problem definition & community validation.
 - [x] Architectural design specification (`ARCHITECTURE.md`).
 - [x] Contributor guidelines & developer experience scaffolding.
 - [x] Open Call for Core Collaborators on GitHub Discussions (#6).
 
-### 📍 Phase 1: MVP Release (v0.1.0-alpha - Completed ✅)
+### Phase 1: MVP Release (v0.1.0-alpha - Completed)
 *Focus: End-to-end working loop for PostgreSQL + Git Hooks on macOS, Linux, and Windows.*
 - [x] **CLI Core Framework:**
   - `branchbase init`: Detect Git repository, create `.branchbase.json`, and install hooks.
@@ -34,7 +34,7 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - Multi-OS GitHub Actions CI workflow (Ubuntu, macOS, Windows).
   - Unit test suite for resolver, config, pgwire, hooks, and drivers.
 
-### 📍 Phase 2: SQLite & Multi-OS Hardening (v0.2.0 - Completed ✅)
+### Phase 2: SQLite & Multi-OS Hardening (v0.2.0 - Completed)
 *Focus: Single-file SQLite databases, interactive terminal dashboard & cross-platform support.*
 - [x] **SQLite Driver:**
   - Copy-on-Write (CoW) implementation on macOS.
@@ -47,7 +47,7 @@ This document outlines the milestones and engineering priorities for **BranchBas
 - [x] **Terminal UI (TUI):**
   - Interactive terminal dashboard (`branchbase tui` / `branchbase dashboard`) with keyboard navigation (`↑`/`↓`, `j`/`k`), branch switching (`Enter`/`s`), and real-time refresh (`r`).
 
-### 📍 Phase 3: Ecosystem & Advanced Workflows (v0.3.0 - Completed ✅)
+### Phase 3: Ecosystem & Advanced Workflows (v0.3.0 - Completed)
 *Focus: MySQL, Docker Compose deep integration, proxy hardening, and multi-agent workflows.*
 - [x] **MySQL / MariaDB Driver:**
   - Native pure-Go driver (`internal/driver/mysql`) for MySQL 8+ and MariaDB.
@@ -76,10 +76,9 @@ This document outlines the milestones and engineering priorities for **BranchBas
   - [x] Native Git worktree detection (`ResolveCurrentBranch`) and hook lifecycle (`InstallHooks`, `UninstallHooks`, `AreHooksInstalled`) across linked worktrees.
   - [x] Non-conflicting proxy port resolution and connection pooling across isolated worktree instances.
 
-
 ---
 
-## 🏷️ Looking for Tasks to Hack On?
+## Open Tasks & Good First Issues
 
 Check our GitHub Issues tagged with:
 - `good first issue` — Beginner-friendly tasks to get started.

@@ -1,4 +1,4 @@
-# Contributing to BranchBase 🌿
+# Contributing to BranchBase
 
 First off, thank you for considering contributing to **BranchBase**! Projects like this thrive because of developers like you who care about improving day-to-day developer experience.
 
@@ -6,7 +6,7 @@ Whether you want to write code, design new database drivers, report bugs, improv
 
 ---
 
-## 🌱 New to the Project? Start Here!
+## Getting Started for New Contributors
 
 If you are looking for approachable tasks to get started, check our curated newcomer issues:
 - **[Good First Issues on GitHub](https://github.com/oscarbol09/branchbase/labels/good%20first%20issue)**
@@ -16,34 +16,34 @@ Each newcomer issue includes exact file pointers, reproduction steps, and expect
 
 ---
 
-## 🎯 How Can You Contribute?
+## Areas of Contribution
 
 Here are some high-impact areas where we need collaboration:
 
 1. **Database Drivers:**
-   - ✅ PostgreSQL Driver (`CREATE DATABASE ... TEMPLATE`) — *Implemented.*
-   - ✅ SQLite Driver (Reflink / APFS `clonefile` / Btrfs / XFS) — *Implemented.*
-   - ✅ MySQL / MariaDB Driver (`CREATE TABLE ... LIKE` schema cloning) — *Implemented.*
-   - 🔧 MongoDB Driver — *Open for contribution.*
-   - 🔧 CockroachDB / TiDB Driver — *Open for contribution.*
+   - PostgreSQL Driver (`CREATE DATABASE ... TEMPLATE`) — *Implemented.*
+   - SQLite Driver (Reflink / APFS `clonefile` / Btrfs / XFS) — *Implemented.*
+   - MySQL / MariaDB Driver (`CREATE TABLE ... LIKE` schema cloning) — *Implemented.*
+   - MongoDB Driver — *Open for contribution.*
+   - CockroachDB / TiDB Driver — *Open for contribution.*
 2. **Transparent Proxy Engine:**
-   - ✅ Wire-protocol parsing for PostgreSQL `StartupMessage` — *Implemented.*
-   - ✅ TLS/SSL negotiation (`sslmode=require`) — *Implemented.*
-   - ✅ UNIX domain socket support — *Implemented.*
-   - ✅ Graceful connection draining — *Implemented.*
-   - 🔧 Wire-protocol parsing for MySQL Handshake — *Open for contribution.*
+   - Wire-protocol parsing for PostgreSQL `StartupMessage` — *Implemented.*
+   - TLS/SSL negotiation (`sslmode=require`) — *Implemented.*
+   - UNIX domain socket support — *Implemented.*
+   - Graceful connection draining — *Implemented.*
+   - Wire-protocol parsing for MySQL Handshake — *Open for contribution.*
 3. **CLI & Developer Experience:**
-   - ✅ Git hook installation & integration tests — *Implemented.*
-   - ✅ Interactive TUI (Terminal UI) dashboard — *Implemented.*
-   - ✅ Autocompletion scripts (bash, zsh, fish, powershell) — *Implemented.*
-   - 🔧 `branchbase doctor` diagnostic command — *Open for contribution.*
+   - Git hook installation & integration tests — *Implemented.*
+   - Interactive TUI (Terminal UI) dashboard — *Implemented.*
+   - Autocompletion scripts (bash, zsh, fish, powershell) — *Implemented.*
+   - `branchbase doctor` diagnostic command — *Open for contribution.*
 4. **Documentation & Guides:**
-   - ✅ Prisma ORM integration guide — *Implemented.*
-   - 🔧 Integration guides for: **Drizzle**, **Django**, **Ruby on Rails**, **Alembic/SQLAlchemy**, **TypeORM**.
+   - Prisma ORM integration guide — *Implemented.*
+   - Integration guides for: **Drizzle**, **Django**, **Ruby on Rails**, **Alembic/SQLAlchemy**, **TypeORM**.
 
 ---
 
-## 🛠️ Development Setup
+## Development Setup
 
 ### Prerequisites
 - **Go** (1.22+ or latest stable).
@@ -67,7 +67,7 @@ go build -o bin/branchbase ./cmd/branchbase
 
 ---
 
-## 🧩 Implementing a New Database Driver
+## Implementing a New Database Driver
 
 To add support for a new database, implement the `Driver` interface defined in `internal/driver/driver.go`:
 
@@ -103,7 +103,7 @@ type Driver interface {
 
 ---
 
-## 📋 Pull Request Guidelines
+## Pull Request Guidelines
 
 1. **Keep it Focused:** A pull request should do one thing well. Avoid bundling unrelated refactors.
 2. **Write Tests:** If you are fixing a bug or adding a feature, please include automated tests.
@@ -115,9 +115,9 @@ type Driver interface {
 
 ---
 
-## 💬 Community & Questions
+## Community & Questions
 
 - **GitHub Discussions:** Use Discussions for architecture proposals, RFCs, and questions.
 - **Issues:** Use GitHub Issues for bug reports and tracked feature requests.
 
-Thank you for building the future of local-first database developer experience with us! 🚀
+Thank you for building the future of local-first database developer experience with us!

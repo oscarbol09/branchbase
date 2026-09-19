@@ -1,4 +1,4 @@
-# BranchBase Technical Architecture 🏗️
+# BranchBase Technical Architecture
 
 This document outlines the internal architecture, design principles, and lifecycle flow of **BranchBase**.
 
