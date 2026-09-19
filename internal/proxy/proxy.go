@@ -258,7 +258,11 @@ func (s *Server) acceptLoop(ctx context.Context) {
 					return
 				}
 				log.Printf("[BranchBase Proxy] Accept error: %v", err)
-				time.Sleep(50 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(50 * time.Millisecond):
+				}
 				continue
 			}
 		}
