@@ -1,8 +1,8 @@
-# 🌿 Guía Maestra: Redacción Humana para Desarrolladores y Estrategia de Lanzamiento en Reddit (BranchBase)
+# Guía Maestra: Redacción Humana para Desarrolladores y Estrategia de Lanzamiento en Reddit (BranchBase)
 
 ---
 
-## 🎯 PARTE 1: Cómo Evitar que una Redacción Parezca Hecha por IA
+## PARTE 1: Cómo Evitar que una Redacción Parezca Hecha por IA
 
 Los desarrolladores en comunidades como **Hacker News**, **Reddit** (`r/programming`, `r/golang`), **Lobste.rs** y **Twitter/X** tienen el detector de IA más afilado de internet. Reconocen inmediatamente el texto generado porque están acostumbrados a la alta densidad de información (código, RFCs, logs, benchmarks) y repelen el "relleno corporativo".
 
@@ -71,7 +71,7 @@ Evita terminantemente estas palabras y construcciones en tus posts técnicos:
 
 ---
 
-## 🛡️ PARTE 2: Normas de Reddit y Políticas de Autopromoción
+## PARTE 2: Normas de Reddit y Políticas de Autopromoción
 
 Reddit es una plataforma comunitaria hostil al spam comercial, pero **extremadamente generosa con los desarrolladores que comparten herramientas Open Source útiles y participan con humildad técnica.**
 
@@ -116,7 +116,7 @@ Reddit es una plataforma comunitaria hostil al spam comercial, pero **extremadam
 
 ---
 
-## 📅 Plan Táctico de Publicación Escalonada para BranchBase
+## Plan Táctico de Publicación Escalonada para BranchBase
 
 ```mermaid
 gantt
@@ -135,9 +135,9 @@ gantt
 
 ---
 
-## 📝 Plantillas Listas para Usar (Redacción 100% Humana)
+## Plantillas Listas para Usar (Redacción Humana)
 
-### 📌 Plantilla 1: Para `r/golang` (Martes)
+### Plantilla 1: Para `r/golang` (Martes)
 **Título:** *I built a local database branching tool in Go that switches DBs on git checkout*
 
 **Cuerpo:**
@@ -157,7 +157,6 @@ I wrote **BranchBase** to automate this locally using Go's standard library.
 - Go 1.22+ (zero third-party web frameworks, standard `net`, `io`, `database/sql`)
 - Wire protocol sniffer for PostgreSQL & MySQL startup packets.
 - MIT Licensed.
-
 Repo: https://github.com/oscarbol09/branchbase
 
 I would love feedback from the community, especially regarding the MySQL wire protocol handshake parser in `internal/proxy/mysql.go` if anyone has deep protocol experience.
@@ -165,7 +164,7 @@ I would love feedback from the community, especially regarding the MySQL wire pr
 
 ---
 
-### 📌 Plantilla 2: Para `r/webdev` (Showoff Saturday)
+### Plantilla 2: Para `r/webdev` (Showoff Saturday)
 **Título:** *[Showoff Saturday] I got tired of dropping my local database on every git checkout, so I built an open-source CLI*
 
 **Cuerpo:**
@@ -193,7 +192,7 @@ Happy to answer any questions or hear about your current local DB setups!
 
 ---
 
-### 📌 Plantilla 3: Para `r/SideProject`
+### Plantilla 3: Para `r/SideProject`
 **Título:** *I built BranchBase: Git-like database branching for your local dev environment (Open Source)*
 
 **Cuerpo:**
