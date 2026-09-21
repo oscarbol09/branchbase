@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"regexp"
 	"testing"
@@ -254,4 +255,31 @@ func TestMySQLDriverRegistration(t *testing.T) {
 		t.Fatalf("GetDriver('mariadb') failed: %v", err)
 	}
 	_ = mariaDrv.Close()
+}
+
+func TestMySQLDatabaseSQLDriverRegistered(t *testing.T) {
+	t.Parallel()
+	for _, name := range sql.Drivers() {
+		if name == "mysql" {
+			return
+		}
+	}
+	t.Fatal(`database/sql driver "mysql" is not registered`)
+}
+
+func TestNewWithPoolConfigInitializesPool(t *testing.T) {
+	t.Parallel()
+	drv, err := NewWithPoolConfig(Config{
+		Host:         "127.0.0.1",
+		Port:         3306,
+		User:         "root",
+		BaseDatabase: "myapp_dev",
+	}, defaultPoolConfig)
+	if err != nil {
+		t.Fatalf("NewWithPoolConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = drv.Close() })
+	if drv.DB() == nil {
+		t.Fatal("expected initialized *sql.DB, got nil")
+	}
 }
