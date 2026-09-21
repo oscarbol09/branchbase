@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,12 +11,82 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PortMapping is a Compose ports entry: short ("5433:5432"), unquoted
+// integer (5432), or Compose v2 long syntax ({target, published}).
+type PortMapping struct {
+	Host   int
+	Target int
+}
+
+// UnmarshalYAML accepts short string/int ports and long-syntax mappings.
+func (p *PortMapping) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		return nil
+	}
+	switch value.Kind {
+	case yaml.ScalarNode:
+		return p.fromShort(value.Value)
+	case yaml.MappingNode:
+		var raw struct {
+			Target    yaml.Node `yaml:"target"`
+			Published yaml.Node `yaml:"published"`
+		}
+		if err := value.Decode(&raw); err != nil {
+			return err
+		}
+		p.Target = nodeInt(&raw.Target)
+		p.Host = nodeInt(&raw.Published)
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (p *PortMapping) fromShort(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ":")
+	switch len(parts) {
+	case 1:
+		n, err := strconv.Atoi(parts[0])
+		if err != nil || n <= 0 {
+			return nil
+		}
+		p.Host = n
+		p.Target = n
+	default:
+		// host:container or ip:host:container — host is second-to-last.
+		hostStr := parts[len(parts)-2]
+		targetStr := parts[len(parts)-1]
+		if n, err := strconv.Atoi(hostStr); err == nil && n > 0 {
+			p.Host = n
+		}
+		if n, err := strconv.Atoi(targetStr); err == nil && n > 0 {
+			p.Target = n
+		}
+	}
+	return nil
+}
+
+func nodeInt(n *yaml.Node) int {
+	if n == nil || n.Value == "" {
+		return 0
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(n.Value))
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return v
+}
+
 // ComposeService represents a service block inside docker-compose.yml
 type ComposeService struct {
-	Image       string    `yaml:"image"`
-	Ports       []string  `yaml:"ports"`
-	Environment yaml.Node `yaml:"environment"`
-	EnvFile     yaml.Node `yaml:"env_file"`
+	Image       string        `yaml:"image"`
+	Ports       []PortMapping `yaml:"ports"`
+	Environment yaml.Node     `yaml:"environment"`
+	EnvFile     yaml.Node     `yaml:"env_file"`
 }
 
 // ComposeFile represents the top-level docker-compose.yml structure
@@ -142,21 +213,28 @@ func parseEnvironment(node *yaml.Node) map[string]string {
 	return res
 }
 
-func parsePublishedPort(ports []string, defaultPort int) int {
+func parsePublishedPort(ports []PortMapping, defaultPort int) int {
 	for _, p := range ports {
-		parts := strings.Split(p, ":")
-		if len(parts) >= 2 {
-			hostPortStr := parts[len(parts)-2]
-			if val, err := strconv.Atoi(hostPortStr); err == nil && val > 0 {
-				return val
-			}
-		} else if len(parts) == 1 {
-			if val, err := strconv.Atoi(parts[0]); err == nil && val > 0 {
-				return val
-			}
+		if p.Host > 0 {
+			return p.Host
 		}
 	}
 	return defaultPort
+}
+
+// PortCollisionWarning returns a user-facing warning when the Compose
+// published host port matches the BranchBase proxy listen port.
+func PortCollisionWarning(dbHostPort, proxyListenPort, containerPort int) string {
+	if dbHostPort <= 0 || proxyListenPort <= 0 || dbHostPort != proxyListenPort {
+		return ""
+	}
+	target := containerPort
+	if target <= 0 {
+		target = dbHostPort
+	}
+	suggestedHost := proxyListenPort + 1
+	return fmt.Sprintf("⚠️  Port Collision Detected: Docker Compose exposes your database on port %d.\n👉 Suggested Action: Remap your Docker Compose port to %d:%d so BranchBase Proxy can listen on %d.",
+		dbHostPort, suggestedHost, target, proxyListenPort)
 }
 
 func getFirstNonEmpty(vals ...string) string {

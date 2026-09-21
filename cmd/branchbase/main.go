@@ -178,6 +178,9 @@ func runInit(cwd string, skipHooks bool) error {
 		if dbSvc, composeFile, err := compose.DetectCompose(cwd); err == nil && dbSvc != nil {
 			compose.ApplyToConfig(&cfg, dbSvc)
 			fmt.Printf("🐳 Auto-detected %s database from %s (port %d, db %q)\n", dbSvc.Driver, composeFile, dbSvc.Port, dbSvc.Database)
+			if msg := compose.PortCollisionWarning(dbSvc.Port, cfg.Proxy.ListenPort, dbSvc.InternalPort); msg != "" {
+				fmt.Println(msg)
+			}
 		}
 
 		if err := cfg.SaveJSON(configPath); err != nil {
