@@ -167,15 +167,15 @@ func (m *DashboardModel) RenderView() string {
 	// 1. Header Card
 	b.WriteString(Bold + Green + "🌿 BranchBase Dashboard" + Reset + " " + Dim + "v0.3.0" + Reset + "\n")
 	b.WriteString(Dim + "─────────────────────────────────────────────────────────────────────────────" + Reset + "\n")
-	b.WriteString(fmt.Sprintf("  • %-16s %s%s%s (sanitized: %s)\n", "Active Branch:", Bold+Cyan, m.ActiveBranch, Reset, m.SanitizedActive))
-	b.WriteString(fmt.Sprintf("  • %-16s %s (%s)\n", "Database Engine:", Bold+driverName+Reset, backendHost))
-	b.WriteString(fmt.Sprintf("  • %-16s Port %d -> Backend %s\n", "Proxy Routing:", proxyPort, backendHost))
-	b.WriteString(fmt.Sprintf("  • %-16s %d database(s) (%s total)\n", "Managed Storage:", len(m.Branches), FormatBytes(m.TotalBytes)))
+	fmt.Fprintf(&b, "  • %-16s %s%s%s (sanitized: %s)\n", "Active Branch:", Bold+Cyan, m.ActiveBranch, Reset, m.SanitizedActive)
+	fmt.Fprintf(&b, "  • %-16s %s (%s)\n", "Database Engine:", Bold+driverName+Reset, backendHost)
+	fmt.Fprintf(&b, "  • %-16s Port %d -> Backend %s\n", "Proxy Routing:", proxyPort, backendHost)
+	fmt.Fprintf(&b, "  • %-16s %d database(s) (%s total)\n", "Managed Storage:", len(m.Branches), FormatBytes(m.TotalBytes))
 	b.WriteString(Dim + "─────────────────────────────────────────────────────────────────────────────" + Reset + "\n\n")
 
 	// 2. Table Header
-	b.WriteString(Bold + fmt.Sprintf("  %-3s %-24s %-28s %-10s %-12s", "", "BRANCH", "DATABASE", "SIZE", "STATUS") + Reset + "\n")
-	b.WriteString(Dim + fmt.Sprintf("  %-3s %-24s %-28s %-10s %-12s", "", "------", "--------", "----", "------") + Reset + "\n")
+	fmt.Fprintf(&b, "%s  %-3s %-24s %-28s %-10s %-12s%s\n", Bold, "", "BRANCH", "DATABASE", "SIZE", "STATUS", Reset)
+	fmt.Fprintf(&b, "%s  %-3s %-24s %-28s %-10s %-12s%s\n", Dim, "", "------", "--------", "----", "------", Reset)
 
 	// 3. Table Rows
 	if len(m.Branches) == 0 {
@@ -336,7 +336,8 @@ func Run(ctx context.Context, repoPath string, cfg *config.Config, drv driver.Dr
 		}
 
 		var key string
-		if b == 27 { // Escape character
+		switch b {
+		case 27: // Escape character
 			// Check if part of arrow sequence
 			if reader.Buffered() >= 2 {
 				next1, _ := reader.ReadByte()
@@ -356,11 +357,11 @@ func Run(ctx context.Context, repoPath string, cfg *config.Config, drv driver.Dr
 			} else {
 				key = "esc"
 			}
-		} else if b == '\r' || b == '\n' {
+		case '\r', '\n':
 			key = "enter"
-		} else if b == 3 { // Ctrl+C
+		case 3: // Ctrl+C
 			key = "ctrl+c"
-		} else {
+		default:
 			key = string(b)
 		}
 

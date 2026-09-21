@@ -456,7 +456,9 @@ func TestRunTUIWithSqlite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getDriverForConfig: %v", err)
 	}
-	defer drv.Close()
+	defer func() {
+		_ = drv.Close()
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -123,13 +123,14 @@ func parseEnvironment(node *yaml.Node) map[string]string {
 		return res
 	}
 
-	if node.Kind == yaml.MappingNode {
+	switch node.Kind {
+	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			k := node.Content[i].Value
 			v := node.Content[i+1].Value
 			res[k] = v
 		}
-	} else if node.Kind == yaml.SequenceNode {
+	case yaml.SequenceNode:
 		for _, item := range node.Content {
 			val := item.Value
 			parts := strings.SplitN(val, "=", 2)
