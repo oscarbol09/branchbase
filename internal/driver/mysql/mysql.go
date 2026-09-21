@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
+
 	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/git"
 )
@@ -126,12 +128,7 @@ func New(cfg Config) (*MySQLDriver, error) {
 func NewWithPoolConfig(cfg Config, poolConfig PoolConfig) (*MySQLDriver, error) {
 	db, err := sql.Open("mysql", cfg.DSN())
 	if err != nil {
-		// When standard sql driver is not registered in the binary, return driver instance with nil db
-		// allowing mock injection via NewWithDB and safe inspection
-		return &MySQLDriver{
-			cfg: cfg,
-			db:  nil,
-		}, nil
+		return nil, fmt.Errorf("mysql open: %w", err)
 	}
 
 	db.SetMaxOpenConns(poolConfig.MaxOpenConns)
