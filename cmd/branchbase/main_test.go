@@ -524,6 +524,58 @@ services:
 	}
 }
 
+func TestRunInitPortCollisionWarning(t *testing.T) {
+	dir := t.TempDir()
+
+	composeContent := `
+services:
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: collide_dev
+`
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	runErr := runInit(dir, true)
+	_ = w.Close()
+	os.Stdout = old
+	if runErr != nil {
+		t.Fatalf("runInit: %v", runErr)
+	}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Port Collision Detected") {
+		t.Fatalf("expected collision warning in init output, got: %s", out)
+	}
+	if !strings.Contains(out, "5433:5432") {
+		t.Fatalf("expected remap suggestion 5433:5432, got: %s", out)
+	}
+
+	loaded, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if loaded.Connection.Port != 5432 {
+		t.Errorf("Connection.Port = %d, want 5432", loaded.Connection.Port)
+	}
+	if loaded.Proxy.ListenPort != 5432 {
+		t.Errorf("Proxy.ListenPort = %d, want 5432", loaded.Proxy.ListenPort)
+	}
+}
+
 func TestRunInitSkipHooks(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -575,4 +627,3 @@ func TestRunInitFullSuccessInGitRepo(t *testing.T) {
 		t.Fatalf("expected post-checkout hook to be installed: %v", statErr)
 	}
 }
-

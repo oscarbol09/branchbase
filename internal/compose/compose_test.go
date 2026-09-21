@@ -3,6 +3,7 @@ package compose
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/branchbase/branchbase/internal/config"
@@ -101,6 +102,89 @@ services:
 	}
 	if dbSvc.Database != "shop_dev" {
 		t.Errorf("database = %q, want shop_dev", dbSvc.Database)
+	}
+}
+
+func TestDetectComposeLongSyntaxPorts(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	content := `
+services:
+  db:
+    image: postgres:16
+    ports:
+      - target: 5432
+        published: 5433
+        protocol: tcp
+    environment:
+      POSTGRES_DB: long_dev
+`
+	if err := os.WriteFile(filepath.Join(dir, "compose.yml"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	dbSvc, filename, err := DetectCompose(dir)
+	if err != nil {
+		t.Fatalf("DetectCompose failed: %v", err)
+	}
+	if dbSvc == nil {
+		t.Fatal("expected dbSvc not to be nil")
+	}
+	if filename != "compose.yml" {
+		t.Errorf("filename = %q, want compose.yml", filename)
+	}
+	if dbSvc.Port != 5433 {
+		t.Errorf("port = %d, want 5433 (long-syntax published)", dbSvc.Port)
+	}
+	if dbSvc.InternalPort != 5432 {
+		t.Errorf("internal port = %d, want 5432", dbSvc.InternalPort)
+	}
+}
+
+func TestDetectComposeUnquotedIntegerPort(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	content := `
+services:
+  db:
+    image: postgres:16
+    ports:
+      - 5432
+    environment:
+      POSTGRES_DB: intport_dev
+`
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yaml"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	dbSvc, _, err := DetectCompose(dir)
+	if err != nil {
+		t.Fatalf("DetectCompose failed: %v", err)
+	}
+	if dbSvc == nil {
+		t.Fatal("expected dbSvc not to be nil")
+	}
+	if dbSvc.Port != 5432 {
+		t.Errorf("port = %d, want 5432 (unquoted integer)", dbSvc.Port)
+	}
+}
+
+func TestPortCollisionWarning(t *testing.T) {
+	t.Parallel()
+	got := PortCollisionWarning(5432, 5432, 5432)
+	if !strings.Contains(got, "Port Collision Detected") {
+		t.Fatalf("expected collision warning, got %q", got)
+	}
+	if !strings.Contains(got, "5433:5432") {
+		t.Fatalf("expected remap suggestion 5433:5432, got %q", got)
+	}
+	if PortCollisionWarning(5433, 5432, 5432) != "" {
+		t.Fatal("expected no warning when host port differs from proxy listen port")
+	}
+	if PortCollisionWarning(0, 5432, 5432) != "" {
+		t.Fatal("expected no warning for missing host port")
 	}
 }
 
