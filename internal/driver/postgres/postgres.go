@@ -239,7 +239,9 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 		FROM pg_stat_activity
 		WHERE datname = $1 AND pid <> pg_backend_pid();
 	`
-	_, _ = d.db.ExecContext(ctx, terminateQuery, sourceDB)
+	if _, err := d.db.ExecContext(ctx, terminateQuery, sourceDB); err != nil && !isPermissionError(err) {
+		return fmt.Errorf("failed to terminate connections to source database %q: %w", sourceDB, err)
+	}
 
 	// Check collision with existing database comment
 	var existingComment sql.NullString
@@ -249,7 +251,10 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 		LEFT JOIN pg_shdescription d ON d.objoid = db.oid 
 		WHERE db.datname = $1;
 	`
-	_ = d.db.QueryRowContext(ctx, checkCommentQuery, targetDB).Scan(&existingComment)
+	err := d.db.QueryRowContext(ctx, checkCommentQuery, targetDB).Scan(&existingComment)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to inspect comment for target database %q: %w", targetDB, err)
+	}
 	if existingComment.Valid && existingComment.String != "" {
 		if strings.HasPrefix(existingComment.String, "branchbase:branch=") {
 			origBranch := strings.TrimPrefix(existingComment.String, "branchbase:branch=")
@@ -261,7 +266,7 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 
 	// Step 2: Create new branch database from template
 	createQuery := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s;", pq.QuoteIdentifier(targetDB), pq.QuoteIdentifier(sourceDB))
-	_, err := d.db.ExecContext(ctx, createQuery)
+	_, err = d.db.ExecContext(ctx, createQuery)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "42P04" {
@@ -273,7 +278,9 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 
 	// Step 3: Record original branch name metadata in database comment
 	commentQuery := fmt.Sprintf("COMMENT ON DATABASE %s IS %s;", pq.QuoteIdentifier(targetDB), pq.QuoteLiteral(fmt.Sprintf("branchbase:branch=%s", targetBranch)))
-	_, _ = d.db.ExecContext(ctx, commentQuery)
+	if _, err := d.db.ExecContext(ctx, commentQuery); err != nil {
+		return fmt.Errorf("failed to set branch comment on database %q: %w", targetDB, err)
+	}
 
 	return nil
 }
@@ -295,11 +302,21 @@ func (d *PostgresDriver) DeleteBranch(ctx context.Context, branchName string) er
 		FROM pg_stat_activity
 		WHERE datname = $1 AND pid <> pg_backend_pid();
 	`
-	_, _ = d.db.ExecContext(ctx, terminateQuery, dbName)
+	if _, err := d.db.ExecContext(ctx, terminateQuery, dbName); err != nil && !isPermissionError(err) {
+		return fmt.Errorf("failed to terminate connections to database %q: %w", dbName, err)
+	}
 
 	dropQuery := fmt.Sprintf("DROP DATABASE IF EXISTS %s;", pq.QuoteIdentifier(dbName))
 	_, err := d.db.ExecContext(ctx, dropQuery)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to drop branch database %q: %w", dbName, err)
+	}
+	return nil
+}
+
+func isPermissionError(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "42501"
 }
 
 // ListBranches returns all databases that match the base_database or base_database_<branch> pattern

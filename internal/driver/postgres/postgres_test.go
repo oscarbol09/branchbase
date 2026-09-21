@@ -10,6 +10,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/branchbase/branchbase/internal/driver"
+	"github.com/lib/pq"
 )
 
 func TestFormatDBName(t *testing.T) {
@@ -327,6 +328,59 @@ func TestCreateBranchWithMock(t *testing.T) {
 		t.Fatalf("expected ErrBranchNameCollision, got %v", err)
 	}
 
+	// Non-permission termination errors must stop branch creation.
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev").
+		WillReturnError(errors.New("connection broken"))
+	err = d.CreateBranch(ctx, "main", "termination_error")
+	if err == nil || !strings.Contains(err.Error(), "failed to terminate connections to source database") {
+		t.Fatalf("expected contextual termination error, got %v", err)
+	}
+
+	// Permission errors are tolerated because PostgreSQL may deny terminating
+	// sessions even when the following clone operation can proceed.
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev").
+		WillReturnError(&pq.Error{Code: "42501", Message: "permission denied"})
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_permission_tolerated").
+		WillReturnRows(sqlmock.NewRows([]string{"description"}))
+	mock.ExpectExec(`CREATE DATABASE "myapp_dev_permission_tolerated" TEMPLATE "myapp_dev";`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`COMMENT ON DATABASE "myapp_dev_permission_tolerated" IS 'branchbase:branch=permission_tolerated';`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	if err := d.CreateBranch(ctx, "main", "permission_tolerated"); err != nil {
+		t.Fatalf("CreateBranch should tolerate a termination permission error: %v", err)
+	}
+
+	// Comment inspection errors other than sql.ErrNoRows must be returned.
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_inspection_error").
+		WillReturnError(errors.New("connection broken"))
+	err = d.CreateBranch(ctx, "main", "inspection_error")
+	if err == nil || !strings.Contains(err.Error(), "failed to inspect comment for target database") {
+		t.Fatalf("expected contextual comment inspection error, got %v", err)
+	}
+
+	// Comment write errors are reported after the database is created.
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT d\.description FROM pg_database db LEFT JOIN pg_shdescription d ON d\.objoid = db\.oid WHERE db\.datname = \$1;`).
+		WithArgs("myapp_dev_comment_error").
+		WillReturnRows(sqlmock.NewRows([]string{"description"}))
+	mock.ExpectExec(`CREATE DATABASE "myapp_dev_comment_error" TEMPLATE "myapp_dev";`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`COMMENT ON DATABASE "myapp_dev_comment_error" IS 'branchbase:branch=comment_error';`).
+		WillReturnError(errors.New("comment denied"))
+	err = d.CreateBranch(ctx, "main", "comment_error")
+	if err == nil || !strings.Contains(err.Error(), "failed to set branch comment on database") {
+		t.Fatalf("expected contextual comment write error, got %v", err)
+	}
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled mock expectations: %v", err)
 	}
@@ -363,6 +417,13 @@ func TestDeleteBranchWithMock(t *testing.T) {
 
 	if err := d.DeleteBranch(ctx, "feature_auth"); err == nil {
 		t.Fatal("expected error on DeleteBranch, got nil")
+	}
+
+	mock.ExpectExec(`SELECT pg_terminate_backend\(pid\)`).
+		WithArgs("myapp_dev_termination_error").
+		WillReturnError(errors.New("connection broken"))
+	if err := d.DeleteBranch(ctx, "termination_error"); err == nil || !strings.Contains(err.Error(), "failed to terminate connections to database") {
+		t.Fatalf("expected contextual termination error, got %v", err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
