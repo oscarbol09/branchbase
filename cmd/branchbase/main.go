@@ -327,6 +327,9 @@ func driverParamsForConfig(cfg *config.Config, lightweight bool) map[string]inte
 	params["password"] = cfg.Connection.Password
 	params["base_database"] = cfg.Connection.BaseDatabase
 	params["sslmode"] = "disable"
+	if strings.TrimSpace(cfg.Proxy.DefaultBranch) != "" {
+		params["default_branch"] = cfg.Proxy.DefaultBranch
+	}
 
 	if lightweight {
 		params["max_open_conns"] = 1

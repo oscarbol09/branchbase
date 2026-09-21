@@ -9,6 +9,32 @@ import (
 	"github.com/branchbase/branchbase/internal/driver"
 )
 
+func TestFormatDBPathCustomDefaultBranch(t *testing.T) {
+	t.Parallel()
+	drv, err := New(Config{BasePath: "myapp_dev.db", DefaultBranch: "develop"})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	tests := []struct {
+		branch   string
+		expected string
+	}{
+		{"develop", "myapp_dev.db"},
+		{"staging", "myapp_dev_staging.db"},
+		{"main", "myapp_dev_main.db"},
+		{"release/v1", "myapp_dev_release_v1.db"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.branch, func(t *testing.T) {
+			t.Parallel()
+			got := drv.formatDBPath(tt.branch)
+			if got != tt.expected {
+				t.Errorf("formatDBPath(%q) = %q; want %q", tt.branch, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestDriverRegistration(t *testing.T) {
 	drv, err := driver.GetDriver("sqlite", map[string]interface{}{
 		"path": "test_app.db",

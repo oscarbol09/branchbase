@@ -15,11 +15,12 @@ import (
 
 // Config holds connection parameters for MySQL and MariaDB
 type Config struct {
-	Host         string
-	Port         int
-	User         string
-	Password     string
-	BaseDatabase string
+	Host          string
+	Port          int
+	User          string
+	Password      string
+	BaseDatabase  string
+	DefaultBranch string
 }
 
 // PoolConfig controls the database connection pool used by a MySQLDriver.
@@ -97,6 +98,9 @@ func init() {
 		}
 		if base, ok := params["base_database"].(string); ok && base != "" {
 			cfg.BaseDatabase = base
+		}
+		if def, ok := params["default_branch"].(string); ok && strings.TrimSpace(def) != "" {
+			cfg.DefaultBranch = def
 		}
 
 		return NewWithPoolConfig(cfg, poolConfigFromParams(params))
@@ -345,7 +349,7 @@ func (d *MySQLDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, er
 	for _, datname := range schemas {
 		branchName := strings.TrimPrefix(datname, d.cfg.BaseDatabase+"_")
 		if datname == d.cfg.BaseDatabase {
-			branchName = "main"
+			branchName = d.listedDefaultBranch()
 		}
 
 		branches = append(branches, driver.BranchInfo{
@@ -370,8 +374,24 @@ func (d *MySQLDriver) Close() error {
 
 func (d *MySQLDriver) formatDBName(branch string) string {
 	sanitized := git.SanitizeBranchName(branch)
-	if sanitized == "" || sanitized == "main" || sanitized == "master" || sanitized == "default" {
+	if d.isBaseBranch(sanitized) {
 		return d.cfg.BaseDatabase
 	}
 	return fmt.Sprintf("%s_%s", d.cfg.BaseDatabase, sanitized)
+}
+
+func (d *MySQLDriver) isBaseBranch(sanitized string) bool {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return sanitized == "main" || sanitized == "master" || sanitized == "default"
+	}
+	return sanitized == git.SanitizeBranchName(def)
+}
+
+func (d *MySQLDriver) listedDefaultBranch() string {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return "main"
+	}
+	return git.SanitizeBranchName(def)
 }

@@ -39,6 +39,9 @@ func TestDriverParamsForConfig(t *testing.T) {
 			if got := params["host"]; got != cfg.Connection.Host {
 				t.Fatalf("host = %v, want %v", got, cfg.Connection.Host)
 			}
+			if got := params["default_branch"]; got != cfg.Proxy.DefaultBranch {
+				t.Fatalf("default_branch = %v, want %v", got, cfg.Proxy.DefaultBranch)
+			}
 
 			if lightweight {
 				if got := params["max_open_conns"]; got != 1 {

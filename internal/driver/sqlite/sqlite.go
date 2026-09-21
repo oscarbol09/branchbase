@@ -15,7 +15,8 @@ import (
 
 // Config holds connection and path parameters for SQLite
 type Config struct {
-	BasePath string // Path to primary database file (e.g. "myapp_dev.db" or "./data/app.db")
+	BasePath      string // Path to primary database file (e.g. "myapp_dev.db" or "./data/app.db")
+	DefaultBranch string
 }
 
 // SqliteDriver manages filesystem-level database branching for SQLite engines
@@ -37,6 +38,9 @@ func init() {
 			if cfg.BasePath == "myapp_dev.db" {
 				cfg.BasePath = base + ".db"
 			}
+		}
+		if def, ok := params["default_branch"].(string); ok && strings.TrimSpace(def) != "" {
+			cfg.DefaultBranch = def
 		}
 
 		return New(cfg)
@@ -174,7 +178,7 @@ func (d *SqliteDriver) DeleteBranch(ctx context.Context, branchName string) erro
 	defer d.mu.Unlock()
 
 	sanitized := git.SanitizeBranchName(branchName)
-	if sanitized == "" || sanitized == "main" || sanitized == "master" || sanitized == "default" {
+	if d.isBaseBranch(sanitized) {
 		return fmt.Errorf("cannot delete protected base database %q", d.cfg.BasePath)
 	}
 
@@ -233,7 +237,7 @@ func (d *SqliteDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, e
 		var isProtected bool
 
 		if name == baseFile {
-			branchName = "main"
+			branchName = d.listedDefaultBranch()
 			isProtected = true
 		} else if strings.HasPrefix(name, basePrefix+"_") && strings.HasSuffix(name, ext) {
 			branchName = strings.TrimPrefix(name, basePrefix+"_")
@@ -275,7 +279,7 @@ func (d *SqliteDriver) Close() error {
 // formatDBPath converts a branch name into the corresponding SQLite database file path
 func (d *SqliteDriver) formatDBPath(branch string) string {
 	sanitized := git.SanitizeBranchName(branch)
-	if sanitized == "" || sanitized == "main" || sanitized == "master" || sanitized == "default" {
+	if d.isBaseBranch(sanitized) {
 		return d.cfg.BasePath
 	}
 
@@ -289,4 +293,20 @@ func (d *SqliteDriver) formatDBPath(branch string) string {
 		return targetFile
 	}
 	return filepath.Join(dir, targetFile)
+}
+
+func (d *SqliteDriver) isBaseBranch(sanitized string) bool {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return sanitized == "main" || sanitized == "master" || sanitized == "default"
+	}
+	return sanitized == git.SanitizeBranchName(def)
+}
+
+func (d *SqliteDriver) listedDefaultBranch() string {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return "main"
+	}
+	return git.SanitizeBranchName(def)
 }

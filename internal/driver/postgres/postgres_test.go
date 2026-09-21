@@ -45,6 +45,49 @@ func TestFormatDBName(t *testing.T) {
 	}
 }
 
+func TestFormatDBNameCustomDefaultBranch(t *testing.T) {
+	t.Parallel()
+	d, err := New(Config{
+		BaseDatabase:  "myapp_dev",
+		DefaultBranch: "develop",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error creating driver: %v", err)
+	}
+	defer func() { _ = d.Close() }()
+
+	tests := []struct {
+		branch   string
+		expected string
+	}{
+		{"develop", "myapp_dev"},
+		{"staging", "myapp_dev_staging"},
+		{"main", "myapp_dev_main"},
+		{"release/v1", "myapp_dev_release_v1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.branch, func(t *testing.T) {
+			t.Parallel()
+			got := d.formatDBName(tt.branch)
+			if got != tt.expected {
+				t.Errorf("formatDBName(%q) = %q; want %q", tt.branch, got, tt.expected)
+			}
+		})
+	}
+
+	slash, err := New(Config{
+		BaseDatabase:  "myapp_dev",
+		DefaultBranch: "release/v1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error creating driver: %v", err)
+	}
+	defer func() { _ = slash.Close() }()
+	if got := slash.formatDBName("release/v1"); got != "myapp_dev" {
+		t.Errorf("formatDBName(release/v1) with default_branch release/v1 = %q; want myapp_dev", got)
+	}
+}
+
 func TestPoolConfigFromParams(t *testing.T) {
 	t.Parallel()
 

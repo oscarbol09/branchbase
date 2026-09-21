@@ -19,12 +19,13 @@ import (
 const MaxPostgresIdentifierLen = 63
 
 type Config struct {
-	Host         string
-	Port         int
-	User         string
-	Password     string
-	BaseDatabase string
-	SSLMode      string
+	Host          string
+	Port          int
+	User          string
+	Password      string
+	BaseDatabase  string
+	SSLMode       string
+	DefaultBranch string
 }
 
 // PoolConfig controls the database connection pool used by a PostgresDriver.
@@ -120,6 +121,9 @@ func init() {
 		}
 		if ssl, ok := params["sslmode"].(string); ok && ssl != "" {
 			cfg.SSLMode = ssl
+		}
+		if def, ok := params["default_branch"].(string); ok && strings.TrimSpace(def) != "" {
+			cfg.DefaultBranch = def
 		}
 
 		return NewWithPoolConfig(cfg, poolConfigFromParams(params))
@@ -336,7 +340,7 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 
 		branchName := strings.TrimPrefix(datname, d.cfg.BaseDatabase+"_")
 		if datname == d.cfg.BaseDatabase {
-			branchName = "main"
+			branchName = d.listedDefaultBranch()
 		} else if strings.HasPrefix(description, "branchbase:branch=") {
 			branchName = strings.TrimPrefix(description, "branchbase:branch=")
 		}
@@ -366,8 +370,24 @@ func (d *PostgresDriver) Close() error {
 
 func (d *PostgresDriver) formatDBName(branch string) string {
 	sanitized := git.SanitizeBranchName(branch)
-	if sanitized == "" || sanitized == "main" || sanitized == "master" || sanitized == "default" {
+	if d.isBaseBranch(sanitized) {
 		return d.cfg.BaseDatabase
 	}
 	return fmt.Sprintf("%s_%s", d.cfg.BaseDatabase, sanitized)
+}
+
+func (d *PostgresDriver) isBaseBranch(sanitized string) bool {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return sanitized == "main" || sanitized == "master" || sanitized == "default"
+	}
+	return sanitized == git.SanitizeBranchName(def)
+}
+
+func (d *PostgresDriver) listedDefaultBranch() string {
+	def := strings.TrimSpace(d.cfg.DefaultBranch)
+	if def == "" {
+		return "main"
+	}
+	return git.SanitizeBranchName(def)
 }
