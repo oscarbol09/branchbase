@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
-
-	"bytes"
-	"context"
 
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/tui"
@@ -625,5 +625,198 @@ func TestRunInitFullSuccessInGitRepo(t *testing.T) {
 	hookFile := filepath.Join(dir, ".git", "hooks", "post-checkout")
 	if _, statErr := os.Stat(hookFile); statErr != nil {
 		t.Fatalf("expected post-checkout hook to be installed: %v", statErr)
+	}
+}
+
+func TestExtractConfigFlag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		args         []string
+		wantPath     string
+		wantRemArgs  []string
+	}{
+		{
+			name:        "global flag before command",
+			args:        []string{"--config", "/tmp/custom.yaml", "status", "--json"},
+			wantPath:    "/tmp/custom.yaml",
+			wantRemArgs: []string{"status", "--json"},
+		},
+		{
+			name:        "short flag before command",
+			args:        []string{"-c", "/tmp/custom.yaml", "status"},
+			wantPath:    "/tmp/custom.yaml",
+			wantRemArgs: []string{"status"},
+		},
+		{
+			name:        "global flag with equals before command",
+			args:        []string{"--config=/tmp/custom.yaml", "status"},
+			wantPath:    "/tmp/custom.yaml",
+			wantRemArgs: []string{"status"},
+		},
+		{
+			name:        "short flag with equals",
+			args:        []string{"-c=/tmp/custom.yaml", "proxy"},
+			wantPath:    "/tmp/custom.yaml",
+			wantRemArgs: []string{"proxy"},
+		},
+		{
+			name:        "flag after command",
+			args:        []string{"switch", "feature/auth", "--config", "/tmp/custom.yaml", "--no-create"},
+			wantPath:    "/tmp/custom.yaml",
+			wantRemArgs: []string{"switch", "feature/auth", "--no-create"},
+		},
+		{
+			name:        "no config flag",
+			args:        []string{"status", "--json"},
+			wantPath:    "",
+			wantRemArgs: []string{"status", "--json"},
+		},
+		{
+			name:        "trailing flag without value",
+			args:        []string{"status", "--config"},
+			wantPath:    "",
+			wantRemArgs: []string{"status"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotPath, gotRem := extractConfigFlag(tt.args)
+			if gotPath != tt.wantPath {
+				t.Errorf("extractConfigFlag() gotPath = %q, want %q", gotPath, tt.wantPath)
+			}
+			if len(gotRem) != len(tt.wantRemArgs) {
+				t.Fatalf("extractConfigFlag() gotRem len = %d, want %d: %v vs %v", len(gotRem), len(tt.wantRemArgs), gotRem, tt.wantRemArgs)
+			}
+			for i := range gotRem {
+				if gotRem[i] != tt.wantRemArgs[i] {
+					t.Errorf("gotRem[%d] = %q, want %q", i, gotRem[i], tt.wantRemArgs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestBuildStatusWithCustomConfigPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	customConfigPath := filepath.Join(dir, "monorepo-branchbase.yaml")
+	content := []byte(`
+driver: mysql
+connection:
+  host: 10.0.0.5
+  port: 3307
+  user: custom_admin
+  base_database: monorepo_dev
+proxy:
+  listen_port: 6543
+  default_branch: trunk
+`)
+	if err := os.WriteFile(customConfigPath, content, 0644); err != nil {
+		t.Fatalf("write custom config: %v", err)
+	}
+
+	info, err := buildStatus(dir, customConfigPath)
+	if err != nil {
+		t.Fatalf("buildStatus with custom config failed: %v", err)
+	}
+
+	if info.Driver != "mysql" {
+		t.Errorf("expected driver 'mysql', got %q", info.Driver)
+	}
+	if info.ProxyPort != 6543 {
+		t.Errorf("expected proxy port 6543, got %d", info.ProxyPort)
+	}
+	if info.Backend != "10.0.0.5:3307" {
+		t.Errorf("expected backend '10.0.0.5:3307', got %q", info.Backend)
+	}
+	if !strings.HasPrefix(info.Database, "monorepo_dev") {
+		t.Errorf("expected database prefix 'monorepo_dev', got %q", info.Database)
+	}
+}
+
+func TestBuildStatusWithCustomConfigPathNotFound(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	missingPath := filepath.Join(dir, "non-existent-config.yaml")
+	_, err := buildStatus(dir, missingPath)
+	if err == nil {
+		t.Fatal("expected error when custom config file does not exist, got nil")
+	}
+}
+
+func TestCustomConfigFileEndToEnd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping binary build in short mode")
+	}
+
+	tempDir := t.TempDir()
+	bin := filepath.Join(tempDir, "branchbase")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", bin, ".")
+	build.Dir = "."
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+
+	repoDir := t.TempDir()
+	initGitRepo(t, repoDir)
+
+	// Create custom config outside the repo directory
+	customCfg := filepath.Join(tempDir, "external-config.yaml")
+	yamlContent := []byte(`
+driver: sqlite
+connection:
+  base_database: external_app.db
+proxy:
+  listen_port: 8888
+  default_branch: main
+`)
+	if err := os.WriteFile(customCfg, yamlContent, 0644); err != nil {
+		t.Fatalf("failed to write external config: %v", err)
+	}
+
+	// 1. Test: branchbase --config <path> status --json
+	cmd1 := exec.Command(bin, "--config", customCfg, "status", "--json")
+	cmd1.Dir = repoDir
+	out1, err := cmd1.CombinedOutput()
+	if err != nil {
+		t.Fatalf("branchbase --config status failed: %v\n%s", err, out1)
+	}
+	var res1 statusOutput
+	if err := json.Unmarshal(out1, &res1); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v\n%s", err, out1)
+	}
+	if res1.Driver != "sqlite" {
+		t.Errorf("expected driver 'sqlite', got %q", res1.Driver)
+	}
+	if res1.ProxyPort != 8888 {
+		t.Errorf("expected proxy_port 8888, got %d", res1.ProxyPort)
+	}
+
+	// 2. Test: branchbase status -c <path> --json (flag after command)
+	cmd2 := exec.Command(bin, "status", "-c", customCfg, "--json")
+	cmd2.Dir = repoDir
+	out2, err := cmd2.CombinedOutput()
+	if err != nil {
+		t.Fatalf("branchbase status -c failed: %v\n%s", err, out2)
+	}
+	var res2 statusOutput
+	if err := json.Unmarshal(out2, &res2); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v\n%s", err, out2)
+	}
+	if res2.Driver != "sqlite" {
+		t.Errorf("expected driver 'sqlite', got %q", res2.Driver)
+	}
+	if res2.ProxyPort != 8888 {
+		t.Errorf("expected proxy_port 8888, got %d", res2.ProxyPort)
 	}
 }

@@ -140,13 +140,21 @@ _branchbase() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   cmd="${COMP_WORDS[1]}"
 
+  if [[ "${prev}" == "--config" || "${prev}" == "-c" ]]; then
+    COMPREPLY=( $(compgen -f -X '!*.@(yaml|yml|json)' -- "${cur}") )
+    if [[ ${#COMPREPLY[@]} -eq 0 ]]; then
+      COMPREPLY=( $(compgen -f -- "${cur}") )
+    fi
+    return 0
+  fi
+
   if [[ ${COMP_CWORD} -eq 1 ]]; then
     local commands
     commands="$(branchbase __complete commands 2>/dev/null)"
     if [[ -z "${commands}" ]]; then
       commands="init status proxy switch list prune tui hooks version doctor completion help"
     fi
-    COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
+    COMPREPLY=( $(compgen -W "${commands} --config -c" -- "${cur}") )
     return 0
   fi
 
@@ -155,9 +163,9 @@ _branchbase() {
       if [[ ${COMP_CWORD} -eq 2 ]]; then
         local branches
         branches="$(branchbase __complete switch 2>/dev/null)"
-        COMPREPLY=( $(compgen -W "${branches} --no-create" -- "${cur}") )
+        COMPREPLY=( $(compgen -W "${branches} --no-create --config -c" -- "${cur}") )
       elif [[ ${COMP_CWORD} -ge 3 ]]; then
-        COMPREPLY=( $(compgen -W "--no-create" -- "${cur}") )
+        COMPREPLY=( $(compgen -W "--no-create --config -c" -- "${cur}") )
       fi
       ;;
     hooks)
@@ -170,10 +178,13 @@ _branchbase() {
       COMPREPLY=( $(compgen -W "--skip-hooks --no-hooks" -- "${cur}") )
       ;;
     status|list)
-      COMPREPLY=( $(compgen -W "--json" -- "${cur}") )
+      COMPREPLY=( $(compgen -W "--json --config -c" -- "${cur}") )
       ;;
     prune)
-      COMPREPLY=( $(compgen -W "--dry-run --force -f -y" -- "${cur}") )
+      COMPREPLY=( $(compgen -W "--dry-run --force -f -y --config -c" -- "${cur}") )
+      ;;
+    proxy|tui)
+      COMPREPLY=( $(compgen -W "--config -c" -- "${cur}") )
       ;;
   esac
 }
@@ -214,6 +225,7 @@ _branchbase() {
       local -a branches
       branches=(${(f)"$(branchbase __complete switch 2>/dev/null)"})
       _arguments \
+        '(-c --config)'{-c,--config}'[Path to custom configuration file]:config file:_files -g "*.yaml *.yml *.json"' \
         '--no-create[Do not provision a missing database]' \
         '1:branch:($branches)'
       ;;
@@ -227,12 +239,22 @@ _branchbase() {
       _arguments '--skip-hooks[Skip Git hook installation]' '--no-hooks[Skip Git hook installation]'
       ;;
     status|list)
-      _arguments '--json[JSON output]'
+      _arguments \
+        '(-c --config)'{-c,--config}'[Path to custom configuration file]:config file:_files -g "*.yaml *.yml *.json"' \
+        '--json[JSON output]'
       ;;
     prune)
-      _arguments '--dry-run[Show what would be deleted]' '--force[Skip confirmation]' '-f[Skip confirmation]' '-y[Skip confirmation]'
+      _arguments \
+        '(-c --config)'{-c,--config}'[Path to custom configuration file]:config file:_files -g "*.yaml *.yml *.json"' \
+        '--dry-run[Show what would be deleted]' '--force[Skip confirmation]' '-f[Skip confirmation]' '-y[Skip confirmation]'
+      ;;
+    proxy|tui)
+      _arguments \
+        '(-c --config)'{-c,--config}'[Path to custom configuration file]:config file:_files -g "*.yaml *.yml *.json"'
       ;;
     *)
+      _arguments \
+        '(-c --config)'{-c,--config}'[Path to custom configuration file]:config file:_files -g "*.yaml *.yml *.json"'
       _default
       ;;
   esac
@@ -249,6 +271,8 @@ function __branchbase_complete_switch
 end
 
 complete -c branchbase -f
+
+complete -c branchbase -s c -l config -r -d "Path to custom configuration file"
 
 complete -c branchbase -n "__fish_use_subcommand" -a init -d "Initialize BranchBase in the current repository"
 complete -c branchbase -n "__fish_use_subcommand" -a status -d "Show current Git branch, target database, and proxy status"
@@ -289,10 +313,11 @@ Register-ArgumentCompleter -Native -CommandName branchbase -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @('init','status','proxy','switch','list','prune','tui','hooks','version','doctor','completion','help')
+    $globalOpts = @('--config','-c')
     $elements = @($commandAst.CommandElements | ForEach-Object { $_.Extent.Text })
 
     if ($elements.Count -le 1) {
-        $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+        ($commands + $globalOpts) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
             [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
         }
         return
@@ -303,7 +328,7 @@ Register-ArgumentCompleter -Native -CommandName branchbase -ScriptBlock {
         'switch' {
             $branches = @()
             try { $branches = @(branchbase __complete switch 2>$null) } catch { }
-            $opts = $branches + @('--no-create')
+            $opts = $branches + @('--no-create') + $globalOpts
             $opts | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                 [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
             }
@@ -324,12 +349,17 @@ Register-ArgumentCompleter -Native -CommandName branchbase -ScriptBlock {
             }
         }
         { $_ -in @('status','list') } {
-            @('--json') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            (@('--json') + $globalOpts) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                 [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
             }
         }
         'prune' {
-            @('--dry-run','--force','-f','-y') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            (@('--dry-run','--force','-f','-y') + $globalOpts) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
+        }
+        default {
+            $globalOpts | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                 [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
             }
         }

@@ -217,3 +217,80 @@ connection:
 		t.Errorf("expected base_database 'yml_app_dev', got %q", loaded.Connection.BaseDatabase)
 	}
 }
+
+func TestLoadConfigDirectFilePath(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	// 1. Test direct YAML file path
+	customYAML := filepath.Join(tempDir, "custom-config.yaml")
+	yamlContent := []byte(`
+driver: mysql
+connection:
+  host: 192.168.1.100
+  port: 3306
+  user: custom_admin
+  base_database: custom_mysql_db
+proxy:
+  listen_port: 6000
+  default_branch: develop
+`)
+	if err := os.WriteFile(customYAML, yamlContent, 0644); err != nil {
+		t.Fatalf("failed to write custom yaml: %v", err)
+	}
+
+	loadedYAML, err := LoadConfig(customYAML)
+	if err != nil {
+		t.Fatalf("LoadConfig(customYAML) failed: %v", err)
+	}
+	if loadedYAML.Driver != "mysql" {
+		t.Errorf("expected driver 'mysql', got %q", loadedYAML.Driver)
+	}
+	if loadedYAML.Connection.Host != "192.168.1.100" {
+		t.Errorf("expected host '192.168.1.100', got %q", loadedYAML.Connection.Host)
+	}
+	if loadedYAML.Connection.Port != 3306 {
+		t.Errorf("expected port 3306, got %d", loadedYAML.Connection.Port)
+	}
+	if loadedYAML.Connection.BaseDatabase != "custom_mysql_db" {
+		t.Errorf("expected base_database 'custom_mysql_db', got %q", loadedYAML.Connection.BaseDatabase)
+	}
+	if loadedYAML.Proxy.DefaultBranch != "develop" {
+		t.Errorf("expected default_branch 'develop', got %q", loadedYAML.Proxy.DefaultBranch)
+	}
+
+	// 2. Test direct JSON file path
+	customJSON := filepath.Join(tempDir, "service-branchbase.json")
+	jsonContent := []byte(`{
+  "driver": "sqlite",
+  "connection": {
+    "base_database": "sqlite_custom.db"
+  },
+  "proxy": {
+    "listen_port": 5439
+  }
+}`)
+	if err := os.WriteFile(customJSON, jsonContent, 0644); err != nil {
+		t.Fatalf("failed to write custom json: %v", err)
+	}
+
+	loadedJSON, err := LoadConfig(customJSON)
+	if err != nil {
+		t.Fatalf("LoadConfig(customJSON) failed: %v", err)
+	}
+	if loadedJSON.Driver != "sqlite" {
+		t.Errorf("expected driver 'sqlite', got %q", loadedJSON.Driver)
+	}
+	if loadedJSON.Connection.BaseDatabase != "sqlite_custom.db" {
+		t.Errorf("expected base_database 'sqlite_custom.db', got %q", loadedJSON.Connection.BaseDatabase)
+	}
+	if loadedJSON.Proxy.ListenPort != 5439 {
+		t.Errorf("expected listen_port 5439, got %d", loadedJSON.Proxy.ListenPort)
+	}
+
+	// 3. Test non-existent direct file path returns error
+	missingPath := filepath.Join(tempDir, "does-not-exist.yaml")
+	if _, err := LoadConfig(missingPath); err == nil {
+		t.Fatal("expected error when loading non-existent direct config path, got nil")
+	}
+}

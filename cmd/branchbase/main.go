@@ -31,7 +31,10 @@ func printUsage() {
 	fmt.Println(`BranchBase 🌿 - Instant local database branching for Git workflows
 
 Usage:
-  branchbase <command> [arguments]
+  branchbase [flags] <command> [arguments]
+
+Global Flags:
+  -c, --config <path>      Path to custom configuration file (.branchbase.json/.yaml)
 
 Core Commands:
   init [--skip-hooks]      Initialize BranchBase in current repository (.branchbase.json & Git hooks)
@@ -59,13 +62,61 @@ Other:
 Run 'branchbase <command> --help' for more information.`)
 }
 
+// extractConfigFlag scans args for --config <path>, -c <path>, --config=<path>, or -c=<path>.
+// It returns the resolved config path (if any) and the remaining arguments with the config flags removed.
+func extractConfigFlag(args []string) (string, []string) {
+	var remaining []string
+	var configPath string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--config" || arg == "-c" {
+			if i+1 < len(args) {
+				configPath = args[i+1]
+				i++ // skip value
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--config=") {
+			configPath = strings.TrimPrefix(arg, "--config=")
+			continue
+		}
+		if strings.HasPrefix(arg, "-c=") {
+			configPath = strings.TrimPrefix(arg, "-c=")
+			continue
+		}
+		remaining = append(remaining, arg)
+	}
+	return configPath, remaining
+}
+
+// resolveConfigTarget returns the target config path or directory.
+func resolveConfigTarget(cwd string, configPath ...string) string {
+	if len(configPath) == 0 || strings.TrimSpace(configPath[0]) == "" {
+		return cwd
+	}
+	cp := strings.TrimSpace(configPath[0])
+	if filepath.IsAbs(cp) {
+		return cp
+	}
+	return filepath.Join(cwd, cp)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
 	}
 
-	command := os.Args[1]
+	customConfig, remainingArgs := extractConfigFlag(os.Args[1:])
+	if len(remainingArgs) < 1 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	command := remainingArgs[0]
+	cmdArgs := remainingArgs[1:]
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting current directory: %v\n", err)
@@ -83,7 +134,7 @@ func main() {
 
 	case "init":
 		skipHooks := false
-		for _, arg := range os.Args[2:] {
+		for _, arg := range cmdArgs {
 			if arg == "--skip-hooks" || arg == "--no-hooks" {
 				skipHooks = true
 			}
@@ -94,24 +145,24 @@ func main() {
 
 	case "status":
 		jsonOutput := false
-		for _, arg := range os.Args[2:] {
+		for _, arg := range cmdArgs {
 			if arg == "--json" {
 				jsonOutput = true
 			}
 		}
-		runStatus(cwd, jsonOutput)
+		runStatus(cwd, jsonOutput, customConfig)
 
 	case "proxy":
-		runProxy(cwd)
+		runProxy(cwd, customConfig)
 
 	case "switch":
-		if len(os.Args) < 3 {
+		if len(cmdArgs) < 1 {
 			fmt.Println("Usage: branchbase switch <branch-name> [--no-create]")
 			os.Exit(1)
 		}
 		noCreate := false
 		targetBranch := ""
-		for _, arg := range os.Args[2:] {
+		for _, arg := range cmdArgs {
 			if arg == "--no-create" {
 				noCreate = true
 			} else if targetBranch == "" {
@@ -122,24 +173,24 @@ func main() {
 			fmt.Println("Usage: branchbase switch <branch-name> [--no-create]")
 			os.Exit(1)
 		}
-		runSwitch(cwd, targetBranch, noCreate)
+		runSwitch(cwd, targetBranch, noCreate, customConfig)
 
 	case "list":
 		jsonOutput := false
-		for _, arg := range os.Args[2:] {
+		for _, arg := range cmdArgs {
 			if arg == "--json" {
 				jsonOutput = true
 			}
 		}
-		runList(cwd, jsonOutput)
+		runList(cwd, jsonOutput, customConfig)
 
 	case "tui", "dashboard", "ui":
-		runTUI(cwd)
+		runTUI(cwd, customConfig)
 
 	case "prune":
 		dryRun := false
 		force := false
-		for _, arg := range os.Args[2:] {
+		for _, arg := range cmdArgs {
 			switch arg {
 			case "--dry-run":
 				dryRun = true
@@ -147,26 +198,26 @@ func main() {
 				force = true
 			}
 		}
-		runPrune(cwd, dryRun, force)
+		runPrune(cwd, dryRun, force, customConfig)
 
 	case "hooks":
 		subcmd := "status"
-		if len(os.Args) >= 3 {
-			subcmd = os.Args[2]
+		if len(cmdArgs) >= 1 {
+			subcmd = cmdArgs[0]
 		}
 		runHooks(cwd, subcmd)
 
 	case "completion":
-		runCompletion(os.Args[2:])
+		runCompletion(cmdArgs)
 
 	case "__complete":
-		runComplete(cwd, os.Args[2:])
+		runComplete(cwd, cmdArgs)
 
 	case "risk":
-		runRisk(cwd, os.Args[2:])
+		runRisk(cwd, cmdArgs)
 
 	case "hook-trigger":
-		runHookTrigger(cwd, os.Args[2:])
+		runHookTrigger(cwd, cmdArgs, customConfig)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", command)
@@ -241,14 +292,19 @@ func statusDatabaseName(cfg *config.Config, sanitized string) string {
 }
 
 // buildStatus gathers status fields with graceful defaults when config is missing.
-func buildStatus(cwd string) (statusOutput, error) {
+func buildStatus(cwd string, configPath ...string) (statusOutput, error) {
 	branch, err := git.ResolveCurrentBranch(cwd)
 	branchErr := err
 	if err != nil {
 		branch = "unknown"
 	}
 
-	cfg, _ := config.LoadConfig(cwd)
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, cfgErr := config.LoadConfig(target)
+	if len(configPath) > 0 && strings.TrimSpace(configPath[0]) != "" && cfgErr != nil {
+		return statusOutput{}, fmt.Errorf("could not load configuration from %q: %w", configPath[0], cfgErr)
+	}
+
 	sanitized := git.SanitizeBranchName(branch)
 
 	driverName := "postgres"
@@ -280,8 +336,12 @@ func buildStatus(cwd string) (statusOutput, error) {
 	return out, branchErr
 }
 
-func runStatus(cwd string, jsonOutput bool) {
-	info, branchErr := buildStatus(cwd)
+func runStatus(cwd string, jsonOutput bool, configPath ...string) {
+	info, branchErr := buildStatus(cwd, configPath...)
+	if len(configPath) > 0 && strings.TrimSpace(configPath[0]) != "" && branchErr != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", branchErr)
+		os.Exit(1)
+	}
 
 	if jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
@@ -371,8 +431,9 @@ func getDriverForConfig(cfg *config.Config, lightweight bool) (driver.Driver, er
 	return driver.GetDriver(drvName, driverParamsForConfig(cfg, lightweight))
 }
 
-func runTUI(cwd string) {
-	cfg, err := config.LoadConfig(cwd)
+func runTUI(cwd string, configPath ...string) {
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
@@ -403,13 +464,14 @@ func runTUI(cwd string) {
 	}
 }
 
-func runSwitch(cwd, targetBranch string, noCreate bool) {
+func runSwitch(cwd, targetBranch string, noCreate bool, configPath ...string) {
 	if err := git.ValidateBranchNameUnique(cwd, targetBranch); err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot isolate branch database: %v\n", err)
 		os.Exit(1)
 	}
 	sanitized := git.SanitizeBranchName(targetBranch)
-	cfg, err := config.LoadConfig(cwd)
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
@@ -463,9 +525,14 @@ func runSwitch(cwd, targetBranch string, noCreate bool) {
 	fmt.Println("✅ Branch database provisioned successfully. Active queries will route to this database.")
 }
 
-func runProxy(cwd string) {
-	cfg, err := config.LoadConfig(cwd)
+func runProxy(cwd string, configPath ...string) {
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil {
+		if len(configPath) > 0 && strings.TrimSpace(configPath[0]) != "" {
+			fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println("⚠️  No configuration found. Using default PostgreSQL configuration.")
 		defaultCfg := config.DefaultConfig()
 		cfg = &defaultCfg
@@ -498,8 +565,9 @@ func runProxy(cwd string) {
 	_ = server.Stop()
 }
 
-func runList(cwd string, jsonOutput bool) {
-	cfg, err := config.LoadConfig(cwd)
+func runList(cwd string, jsonOutput bool, configPath ...string) {
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
@@ -579,10 +647,11 @@ type pruneCandidate struct {
 	reason string
 }
 
-func runPrune(cwd string, dryRun, force bool) {
+func runPrune(cwd string, dryRun, force bool, configPath ...string) {
 	fmt.Println("🧹 Checking for merged and orphaned branch databases...")
 
-	cfg, err := config.LoadConfig(cwd)
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
@@ -734,7 +803,7 @@ func runHooks(cwd, action string) {
 	}
 }
 
-func runHookTrigger(cwd string, args []string) {
+func runHookTrigger(cwd string, args []string, configPath ...string) {
 	// For post-checkout hooks: Git passes <previous_head> <new_head> <flag>.
 	// flag == "1" indicates a branch switch; flag == "0" indicates a single-file checkout.
 	// Skip execution on file checkouts to avoid unnecessary database operations.
@@ -749,7 +818,8 @@ func runHookTrigger(cwd string, args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cfg, err := config.LoadConfig(cwd)
+	target := resolveConfigTarget(cwd, configPath...)
+	cfg, err := config.LoadConfig(target)
 	if err != nil || !cfg.Strategy.SnapshotOnSwitch {
 		return
 	}

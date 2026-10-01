@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/branchbase/branchbase/internal/git"
 	"gopkg.in/yaml.v3"
@@ -77,13 +78,52 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadConfig reads and parses .branchbase.json, .branchbase.yaml, or .branchbase.yml from repo root.
+// LoadConfig reads and parses a BranchBase configuration file.
+// If path points directly to an existing file, it loads and parses that file (JSON or YAML).
+// Otherwise, path is treated as a directory root and LoadConfig searches for
+// .branchbase.json, .branchbase.yaml, or .branchbase.yml in that directory.
 // It automatically expands environment variables (${ENV_VAR} or $ENV_VAR) found in the file.
-func LoadConfig(repoPath string) (*Config, error) {
+func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
-	// 1. Check .branchbase.json
-	jsonPath := filepath.Join(repoPath, ".branchbase.json")
+	// If path points directly to a file, parse it directly
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		bytes, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		expanded := os.ExpandEnv(string(bytes))
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".json" {
+			if err := json.Unmarshal([]byte(expanded), &cfg); err != nil {
+				return nil, err
+			}
+			return &cfg, nil
+		}
+		if ext == ".yaml" || ext == ".yml" {
+			if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+				return nil, err
+			}
+			return &cfg, nil
+		}
+		// If unknown extension, try JSON first, then YAML
+		if err := json.Unmarshal([]byte(expanded), &cfg); err == nil {
+			return &cfg, nil
+		}
+		if err := yaml.Unmarshal([]byte(expanded), &cfg); err == nil {
+			return &cfg, nil
+		}
+		return nil, errors.New("unsupported or invalid config file format (expected JSON or YAML)")
+	}
+
+	// If path has a config file extension but does not exist, return an error directly
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".json" || ext == ".yaml" || ext == ".yml" {
+		return nil, os.ErrNotExist
+	}
+
+	// 1. Check .branchbase.json in directory
+	jsonPath := filepath.Join(path, ".branchbase.json")
 	if bytes, err := os.ReadFile(jsonPath); err == nil {
 		expanded := os.ExpandEnv(string(bytes))
 		if err := json.Unmarshal([]byte(expanded), &cfg); err != nil {
@@ -92,8 +132,8 @@ func LoadConfig(repoPath string) (*Config, error) {
 		return &cfg, nil
 	}
 
-	// 2. Check .branchbase.yaml
-	yamlPath := filepath.Join(repoPath, ".branchbase.yaml")
+	// 2. Check .branchbase.yaml in directory
+	yamlPath := filepath.Join(path, ".branchbase.yaml")
 	if bytes, err := os.ReadFile(yamlPath); err == nil {
 		expanded := os.ExpandEnv(string(bytes))
 		if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
@@ -102,8 +142,8 @@ func LoadConfig(repoPath string) (*Config, error) {
 		return &cfg, nil
 	}
 
-	// 3. Check .branchbase.yml
-	ymlPath := filepath.Join(repoPath, ".branchbase.yml")
+	// 3. Check .branchbase.yml in directory
+	ymlPath := filepath.Join(path, ".branchbase.yml")
 	if bytes, err := os.ReadFile(ymlPath); err == nil {
 		expanded := os.ExpandEnv(string(bytes))
 		if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
