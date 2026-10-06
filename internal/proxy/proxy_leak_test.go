@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/branchbase/branchbase/internal/config"
 )
 
 // Mirrors handleConnection's bidirectional copy teardown: after the first
@@ -91,3 +93,48 @@ func TestBidirectionalCopyDoesNotLeakGoroutines(t *testing.T) {
 		t.Fatalf("goroutines grew too much: before=%d after=%d", before, after)
 	}
 }
+
+func TestServerStopWithActiveTLSConns(t *testing.T) {
+	s := &Server{
+		cfg:          &config.Config{},
+		activeConns:  make(map[net.Conn]struct{}),
+		drainTimeout: 500 * time.Millisecond,
+	}
+
+	c1, c2 := net.Pipe()
+	defer func() {
+		_ = c1.Close()
+		_ = c2.Close()
+	}()
+
+	s.addActiveConn(c1)
+	if len(s.activeConns) != 1 {
+		t.Fatalf("expected 1 active conn, got %d", len(s.activeConns))
+	}
+
+	// Simulate adding a wrapped TLS connection
+	tlsWrapper, _ := net.Pipe()
+	defer func() { _ = tlsWrapper.Close() }()
+	s.addActiveConn(tlsWrapper)
+
+	if len(s.activeConns) != 2 {
+		t.Fatalf("expected 2 active conns, got %d", len(s.activeConns))
+	}
+
+	s.removeActiveConn(tlsWrapper)
+	s.removeActiveConn(c1)
+
+	s.activeMu.Lock()
+	count := len(s.activeConns)
+	s.activeMu.Unlock()
+
+	if count != 0 {
+		t.Fatalf("expected 0 active conns after removal, got %d", count)
+	}
+
+	err := s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected stop error: %v", err)
+	}
+}
+

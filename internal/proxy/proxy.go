@@ -360,14 +360,15 @@ func (s *Server) dialBackend() (net.Conn, string, error) {
 
 func (s *Server) handleConnection(clientConn net.Conn) {
 	defer func() { <-s.connectionSlots }()
-	if err := clientConn.SetDeadline(time.Now().Add(startupTimeout)); err != nil {
-		if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
+	rawClientConn := clientConn
+	if err := rawClientConn.SetDeadline(time.Now().Add(startupTimeout)); err != nil {
+		if err := rawClientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close rawClientConn: %v\n", err) }
 		return
 	}
-	s.addActiveConn(clientConn)
+	s.addActiveConn(rawClientConn)
 	defer func() {
-		s.removeActiveConn(clientConn)
-		if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
+		s.removeActiveConn(rawClientConn)
+		if err := rawClientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close rawClientConn: %v\n", err) }
 	}()
 
 	// 1. Resolve active Git branch
@@ -444,7 +445,10 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 				return
 			}
 			s.addActiveConn(tlsConn)
-			defer s.removeActiveConn(tlsConn)
+			defer func() {
+				s.removeActiveConn(tlsConn)
+				if err := tlsConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close tlsConn: %v\n", err) }
+			}()
 			clientConn = tlsConn
 			packet, err = pgwire.ReadStartupPacket(clientConn)
 			if err != nil {
