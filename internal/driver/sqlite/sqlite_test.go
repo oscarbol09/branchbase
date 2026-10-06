@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"os"
+	"database/sql"
+	_ "modernc.org/sqlite"
 	"path/filepath"
 	"testing"
 
@@ -63,9 +65,7 @@ func TestPing(t *testing.T) {
 	}
 
 	// Create dummy file
-	if err := os.WriteFile(basePath, []byte("SQLite format 3\x00dummy data"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	createDummyDB(t, basePath)
 
 	// Ping when file exists and is readable
 	if err := drv.Ping(ctx); err != nil {
@@ -176,12 +176,12 @@ func TestListBranches(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_ = os.WriteFile(basePath, []byte("main-db-data"), 0o644)
-	_ = os.WriteFile(filepath.Join(tempDir, "myapp_dev_feat1.db"), []byte("feat1-db-data"), 0o644)
-	_ = os.WriteFile(filepath.Join(tempDir, "myapp_dev_feat2.db"), []byte("feat2-db-data"), 0o644)
+	createDummyDB(t, basePath)
+	createDummyDB(t, filepath.Join(tempDir, "myapp_dev_feat1.db"))
+	createDummyDB(t, filepath.Join(tempDir, "myapp_dev_feat2.db"))
 	// Sidecar and unrelated files should be ignored
-	_ = os.WriteFile(filepath.Join(tempDir, "myapp_dev_feat1.db-wal"), []byte("wal"), 0o644)
-	_ = os.WriteFile(filepath.Join(tempDir, "unrelated.txt"), []byte("ignore"), 0o644)
+	createDummyDB(t, filepath.Join(tempDir, "myapp_dev_feat1.db-wal"))
+	createDummyDB(t, filepath.Join(tempDir, "unrelated.txt"))
 
 	branches, err := drv.ListBranches(ctx)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestDeleteBranchProtection(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_ = os.WriteFile(basePath, []byte("protected-data"), 0o644)
+	createDummyDB(t, basePath)
 
 	// Attempting to delete main must fail with protection error
 	for _, protected := range []string{"main", "master", "default", ""} {
@@ -266,7 +266,7 @@ func TestCreateBranchRefusesLiveWALAndSHMSidecars(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_ = os.WriteFile(basePath, []byte("db"), 0o644)
+	createDummyDB(t, basePath)
 	_ = os.WriteFile(basePath+"-wal", []byte("wal-bytes"), 0o644)
 	_ = os.WriteFile(basePath+"-shm", []byte("shm-bytes"), 0o644)
 
@@ -277,5 +277,20 @@ func TestCreateBranchRefusesLiveWALAndSHMSidecars(t *testing.T) {
 	targetDB := filepath.Join(tempDir, "myapp_dev_wal_test.db")
 	if _, err := os.Stat(targetDB); !os.IsNotExist(err) {
 		t.Fatalf("target database should not be created when source has sidecars, got stat error %v", err)
+	}
+}
+
+
+func createDummyDB(t *testing.T, path string) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("failed to open mock db: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS dummy (id INTEGER);")
+	if err != nil {
+		t.Fatalf("failed to init mock db: %v", err)
 	}
 }

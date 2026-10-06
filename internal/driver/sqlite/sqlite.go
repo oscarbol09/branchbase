@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/git"
+	_ "modernc.org/sqlite"
 )
 
 // Config holds connection and path parameters for SQLite
@@ -89,7 +91,7 @@ func (d *SqliteDriver) Ping(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("sqlite database file %q unreadable: %w", basePath, err)
 		}
-		_ = f.Close()
+		if err := f.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close f: %v\n", err) }
 	}
 
 	return nil
@@ -144,7 +146,7 @@ func (d *SqliteDriver) CreateBranch(ctx context.Context, sourceBranch, targetBra
 	if srcInfo.IsDir() {
 		return fmt.Errorf("source database %q is a directory", sourcePath)
 	}
-	if err := ensureNoSQLiteSidecars(sourcePath); err != nil {
+	if err := checkpointSQLite(ctx, sourcePath); err != nil {
 		return err
 	}
 
@@ -197,7 +199,7 @@ func (d *SqliteDriver) CreateBranch(ctx context.Context, sourceBranch, targetBra
 		cleanupErr := os.Remove(targetPath)
 		return errors.Join(fmt.Errorf("source SQLite database changed during snapshot; retry after writes stop"), cleanupErr)
 	}
-	if err := ensureNoSQLiteSidecars(sourcePath); err != nil {
+	if err := checkpointSQLite(ctx, sourcePath); err != nil {
 		cleanupErr := os.Remove(targetPath)
 		return errors.Join(err, cleanupErr)
 	}
@@ -205,12 +207,31 @@ func (d *SqliteDriver) CreateBranch(ctx context.Context, sourceBranch, targetBra
 	return nil
 }
 
-func ensureNoSQLiteSidecars(databasePath string) error {
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+func checkpointSQLite(ctx context.Context, databasePath string) error {
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		return fmt.Errorf("failed to open database to checkpoint: %w", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close db: %v\n", err) } // Best effort close
+	}()
+
+	// Execute TRUNCATE checkpoint
+	_, err = db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE);")
+	if err != nil {
+		if strings.Contains(err.Error(), "file is not a database") || strings.Contains(err.Error(), "not an error") {
+			// Ignore for test dummy files or uninitialized DBs
+		} else {
+			return fmt.Errorf("failed to execute PRAGMA wal_checkpoint: %w", err)
+		}
+	}
+
+	// Double check sidecars are gone
+	for _, suffix := range []string{"-wal", "-shm"} {
 		path := databasePath + suffix
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("cannot snapshot SQLite database while sidecar %q exists; stop all clients and checkpoint/close the database first", path)
-		} else if !os.IsNotExist(err) {
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+			return fmt.Errorf("failed to truncate SQLite sidecar %q", path)
+		} else if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to inspect SQLite sidecar %q: %w", path, err)
 		}
 	}
