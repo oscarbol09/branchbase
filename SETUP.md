@@ -36,10 +36,14 @@ go build -v -o bin/branchbase ./cmd/branchbase
 
 ## 3. Running Test Database Containers
 
-To test database branching against real PostgreSQL instances locally:
+To test database branching against real PostgreSQL, MySQL, and MongoDB instances locally:
 
 ```bash
 # Start a local PostgreSQL 16 test container
+# Start local PostgreSQL, MySQL, and MongoDB test containers
+docker compose up -d
+
+# Or start a local PostgreSQL 16 test container manually
 docker run --name branchbase-postgres-test \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \

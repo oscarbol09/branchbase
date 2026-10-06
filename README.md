@@ -1,6 +1,6 @@
 # BranchBase
 
-> **Zero-config, Git-native local database branching for PostgreSQL, MySQL, and SQLite.**  
+> **Zero-config, Git-native local database branching for PostgreSQL, MySQL, SQLite, and MongoDB.**  
 > Stop dropping your local database every time you switch Git branches.
 
 [![BranchBase CI](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml/badge.svg)](https://github.com/oscarbol09/branchbase/actions/workflows/ci.yml)
@@ -15,7 +15,7 @@
 
 ## Problem Context: Git vs. Local Database Friction
 
-Every developer working with Docker, local PostgreSQL, MySQL, or SQLite has suffered this loop:
+Every developer working with Docker, local PostgreSQL, MySQL, SQLite, or MongoDB has suffered this loop:
 
 ```text
 1. You work on `feature/checkout-v2`.
@@ -106,6 +106,7 @@ branchbase/
 │   │   ├── driver.go             # Core Driver interface contract
 │   │   ├── mysql/                # MySQL & MariaDB engine (table cloning & metadata)
 │   │   ├── postgres/             # PostgreSQL engine (TEMPLATE cloning)
+│   │   ├── mongodb/              # MongoDB engine ( aggregation cloning)
 │   │   └── sqlite/               # SQLite engine (CoW / Reflink snapshots)
 │   ├── tui/                      # Interactive Terminal UI (ANSI dashboard)
 │   ├── git/                      # Git HEAD inspector and branch sanitization
@@ -140,6 +141,7 @@ branchbase/
 3. **Copy-on-Write Snapshot:**
    * **PostgreSQL:** Disconnects lingering connections to the template and executes `CREATE DATABASE <target> TEMPLATE <source>;` (instant CoW clone).
    * **MySQL / MariaDB:** Copies schemas and rows table by table (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`); concurrent writes to the source are not captured from a single transaction snapshot.
+   * **MongoDB:** Uses the $out aggregation pipeline to clone collections and reconstructs indexes.
    * **SQLite:** Performs a filesystem reflink/clone (`clonefile()` or `FICLONE`) only when the source has no active WAL/SHM/journal sidecars; otherwise it refuses the snapshot until clients stop and the database is checkpointed.
    * **Docker Compose:** Automatically inspects `docker-compose.yml` to configure database ports and credentials without manual input.
 4. **Transparent Routing:** When your backend app queries `localhost:5432`, the BranchBase proxy intercepts the connection, resolves the active branch database, and forwards traffic directly with sub-millisecond overhead.

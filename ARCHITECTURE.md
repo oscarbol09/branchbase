@@ -26,6 +26,7 @@ graph TD
         DBDriver -->|CREATE DATABASE TEMPLATE| PG[(PostgreSQL)]
         DBDriver -->|Reflink / CoW Copy| SQLite[(SQLite)]
         DBDriver -->|Volume / DB Clone| MySQL[(MySQL)]
+        DBDriver -->|Aggregation Pipeline Clone| MongoDB[(MongoDB)]
     end
 ```
 
@@ -82,6 +83,12 @@ CREATE DATABASE "myapp_dev_feature_billing" TEMPLATE "myapp_dev_main";
 Idempotency is preserved by gracefully handling PostgreSQL SQLSTATE `42P04` (`duplicate_database`).
 
 * **Connection Pooling:** Uses standard `database/sql` connection pooling (`25` open / `5` idle connections by default). For short-lived operations such as `branchbase hook-trigger`, a lightweight single-connection profile (`1` open / `1` idle connection) is used to minimize runtime allocation overhead while avoiding TCP re-handshakes across sequential queries.
+
+#### MongoDB Implementation:
+MongoDB does not natively support cloning databases via a simple command in recent versions, so BranchBase uses the Aggregation Framework:
+1. **Pipeline Execution:** Connects using the native `mongo-driver` and executes an aggregation pipeline on each collection in the source database.
+2. **$out Operator:** The pipeline uses `{ $match: {} }` and `{ $out: { db: targetDB, coll: collName } }` to stream documents directly inside the database engine to the new cloned database.
+3. **Index Reconstruction:** Scans the source indexes and rebuilds them on the target using `CreateMany` (ignoring the default `_id` index).
 
 #### SQLite Implementation:
 For SQLite, BranchBase utilizes filesystem-level **Copy-on-Write (CoW)** snapshots with `.db-wal` and `.db-shm` replication:
