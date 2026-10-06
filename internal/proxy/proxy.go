@@ -21,6 +21,7 @@ import (
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/git"
+	"github.com/branchbase/branchbase/internal/proxy/mysqlwire"
 	"github.com/branchbase/branchbase/internal/proxy/pgwire"
 )
 
@@ -416,7 +417,55 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 		if err := backendConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close backendConn: %v\n", err) }
 	}()
 
-	// 3. PostgreSQL Wire Protocol Handshake Inspection & Rewriting
+	// 3. Database Wire Protocol Handshake Inspection & Rewriting
+	if s.cfg != nil && (s.cfg.Driver == "mysql" || s.cfg.Driver == "mariadb") {
+		// In MySQL, the server initiates the handshake by sending Initial Handshake Packet
+		_, err := mysqlwire.ForwardPacket(clientConn, backendConn)
+		if err != nil {
+			log.Printf("[BranchBase Proxy] Error forwarding MySQL initial handshake to client: %v", err)
+			return
+		}
+
+		// Client responds with HandshakeResponse41
+		clientPayload, clientSeqID, err := mysqlwire.ReadPacket(clientConn)
+		if err != nil {
+			log.Printf("[BranchBase Proxy] Error reading client HandshakeResponse: %v", err)
+			return
+		}
+
+		// Check if client requested SSL
+		if mysqlwire.IsSSLRequest(clientPayload) && len(clientPayload) == 32 {
+			if err := mysqlwire.WritePacket(backendConn, clientPayload, clientSeqID); err != nil {
+				log.Printf("[BranchBase Proxy] Error forwarding MySQL SSL request to backend: %v", err)
+				return
+			}
+			clientPayload, clientSeqID, err = mysqlwire.ReadPacket(clientConn)
+			if err != nil {
+				log.Printf("[BranchBase Proxy] Error reading client HandshakeResponse after SSL: %v", err)
+				return
+			}
+		}
+
+		// Rewrite database to targetDB
+		rewritten, err := mysqlwire.RewriteHandshakeResponseDatabase(clientPayload, targetDB)
+		if err != nil {
+			log.Printf("[BranchBase Proxy] Failed to rewrite MySQL HandshakeResponse database to %q: %v", targetDB, err)
+			rewritten = clientPayload
+		}
+
+		if err := mysqlwire.WritePacket(backendConn, rewritten, clientSeqID); err != nil {
+			log.Printf("[BranchBase Proxy] Error forwarding rewritten HandshakeResponse to backend: %v", err)
+			return
+		}
+
+		_ = clientConn.SetDeadline(time.Time{})
+		_ = backendConn.SetDeadline(time.Time{})
+
+		s.pipeConnections(clientConn, backendConn)
+		return
+	}
+
+	// PostgreSQL Wire Protocol Handshake Inspection & Rewriting
 	packet, err := pgwire.ReadStartupPacket(clientConn)
 	if err != nil {
 		log.Printf("[BranchBase Proxy] Error reading client startup packet: %v", err)
@@ -486,6 +535,10 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}
 
 	// 4. Bidirectional streaming
+	s.pipeConnections(clientConn, backendConn)
+}
+
+func (s *Server) pipeConnections(clientConn, backendConn net.Conn) {
 	errc := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(backendConn, clientConn)

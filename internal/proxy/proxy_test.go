@@ -622,3 +622,111 @@ func TestProxyHandleConnection_CancelRequestForwarded(t *testing.T) {
 		t.Fatal("backend timed out waiting for forwarded CancelRequest")
 	}
 }
+
+func TestProxyHandleMySQLHandshakeInterception(t *testing.T) {
+	// 1. Mock MySQL Backend
+	backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen mock backend: %v", err)
+	}
+	defer func() { _ = backendListener.Close() }()
+
+	backendPort := backendListener.Addr().(*net.TCPAddr).Port
+	receivedPayloadChan := make(chan []byte, 1)
+
+	go func() {
+		conn, err := backendListener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Step 1: Send server handshake packet (10 bytes payload: protocol 10, version 8.0.0\0, seq 0)
+		serverHandshakePayload := append([]byte{10}, []byte("8.0.0\x00")...)
+		serverHeader := []byte{byte(len(serverHandshakePayload)), 0, 0, 0}
+		_, _ = conn.Write(append(serverHeader, serverHandshakePayload...))
+
+		// Step 2: Read HandshakeResponse41 from proxy
+		var respHeader [4]byte
+		if _, err := io.ReadFull(conn, respHeader[:]); err != nil {
+			return
+		}
+		payloadLen := int(respHeader[0]) | int(respHeader[1])<<8 | int(respHeader[2])<<16
+		payload := make([]byte, payloadLen)
+		if _, err := io.ReadFull(conn, payload); err != nil {
+			return
+		}
+		receivedPayloadChan <- payload
+	}()
+
+	// 2. Start Proxy with driver: mysql
+	cfg := config.DefaultConfig()
+	cfg.Driver = "mysql"
+	cfg.Proxy.ListenPort = 0
+	cfg.Connection.Host = "127.0.0.1"
+	cfg.Connection.Port = backendPort
+	cfg.Connection.BaseDatabase = "myapp_dev"
+
+	srv := NewServer(&cfg, t.TempDir(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Server.Start failed: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	proxyAddr := listenerAddr(srv)
+
+	// 3. Dial Proxy from MySQL Client
+	clientConn, err := net.DialTimeout("tcp", proxyAddr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("failed to dial proxy: %v", err)
+	}
+	defer func() { _ = clientConn.Close() }()
+
+	// Client reads server handshake packet
+	var srvHeader [4]byte
+	if _, err := io.ReadFull(clientConn, srvHeader[:]); err != nil {
+		t.Fatalf("client failed to read handshake header: %v", err)
+	}
+	srvLen := int(srvHeader[0]) | int(srvHeader[1])<<8 | int(srvHeader[2])<<16
+	srvPayload := make([]byte, srvLen)
+	if _, err := io.ReadFull(clientConn, srvPayload); err != nil {
+		t.Fatalf("client failed to read handshake payload: %v", err)
+	}
+
+	// Client sends HandshakeResponse41 with database "old_database"
+	flags := uint32(0x00000200 | 0x00008000 | 0x00000008 | 0x00080000) // Protocol41, SecureConn, ConnectWithDB, PluginAuth
+	var clientResp bytes.Buffer
+	var f [4]byte
+	binary.LittleEndian.PutUint32(f[:], flags)
+	clientResp.Write(f[:])
+	clientResp.Write([]byte{0, 0, 0, 1})
+	clientResp.WriteByte(33)
+	clientResp.Write(make([]byte, 23))
+	clientResp.WriteString("root\x00")
+	clientResp.WriteByte(4) // auth length
+	clientResp.WriteString("pass")
+	clientResp.WriteString("old_database\x00")
+	clientResp.WriteString("mysql_native_password\x00")
+
+	clientPayload := clientResp.Bytes()
+	clientPktHeader := []byte{byte(len(clientPayload)), byte(len(clientPayload) >> 8), byte(len(clientPayload) >> 16), 1}
+	if _, err := clientConn.Write(append(clientPktHeader, clientPayload...)); err != nil {
+		t.Fatalf("failed to write HandshakeResponse41: %v", err)
+	}
+
+	select {
+	case received := <-receivedPayloadChan:
+		if !bytes.Contains(received, []byte("myapp_dev\x00")) {
+			t.Fatalf("expected backend to receive rewritten database 'myapp_dev', got: %q", received)
+		}
+		if bytes.Contains(received, []byte("old_database\x00")) {
+			t.Fatalf("backend still contains 'old_database'")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("backend timed out waiting for rewritten MySQL HandshakeResponse41")
+	}
+}
+
