@@ -1,0 +1,123 @@
+{
+  "36486ad1135ea9b62969c129ca574483e7d1dffadb1dbe0ad505dafd56dabf44": {
+    "risk": {
+      "file": "fixtures\\migrations\\001_safe_add_column.sql",
+      "level": "LOW",
+      "reversible": true,
+      "destructive": false,
+      "touches_fks": false,
+      "exclusive_lock": false,
+      "category": "schema_change",
+      "confidence": 0.95,
+      "flags": null,
+      "operations": [
+        {
+          "type": "ADD_COLUMN",
+          "target_table": "users",
+          "target_column": "bio",
+          "raw_sql": "ALTER TABLE users ADD COLUMN bio TEXT",
+          "line_number": 1
+        }
+      ],
+      "analyzed_at": "2026-10-06T18:24:18.3164641-05:00",
+      "engine": "postgres",
+      "source": "heuristic"
+    },
+    "cached_at": "2026-10-06T18:24:18.3164641-05:00",
+    "cache_key": "36486ad1135ea9b62969c129ca574483e7d1dffadb1dbe0ad505dafd56dabf44"
+  },
+  "57bc7709115ac776bbb0e6d5a2f32d7b4d778a3c62222253888d3695638e29bf": {
+    "risk": {
+      "file": "fixtures\\migrations\\002_drop_referenced_fk.sql",
+      "level": "CRITICAL",
+      "reversible": false,
+      "destructive": true,
+      "touches_fks": true,
+      "exclusive_lock": true,
+      "category": "schema_change",
+      "confidence": 0.95,
+      "flags": [
+        "DROP COLUMN email referenced by FK in orders(user_email)"
+      ],
+      "suggestion": "Remove or reassign dependent foreign keys from users before dropping column \"email\".",
+      "details": "Column \"email\" in table \"users\" is referenced by FK constraint \"fk_orders_user\" in table \"orders\".",
+      "operations": [
+        {
+          "type": "DROP_COLUMN",
+          "target_table": "users",
+          "target_column": "email",
+          "raw_sql": "ALTER TABLE users DROP COLUMN email",
+          "line_number": 1
+        }
+      ],
+      "analyzed_at": "2026-10-06T18:24:18.3617104-05:00",
+      "engine": "postgres",
+      "source": "heuristic"
+    },
+    "cached_at": "2026-10-06T18:24:18.3617104-05:00",
+    "cache_key": "57bc7709115ac776bbb0e6d5a2f32d7b4d778a3c62222253888d3695638e29bf"
+  },
+  "9b1d1bf5aa01af5c8eefa795ac3aa37320557735f3059d12fefabd465fbe1b65": {
+    "risk": {
+      "file": "fixtures\\migrations\\004_mysql_change_col.sql",
+      "level": "HIGH",
+      "reversible": true,
+      "destructive": false,
+      "touches_fks": false,
+      "exclusive_lock": true,
+      "category": "schema_change",
+      "confidence": 0.95,
+      "flags": [
+        "ALTER COLUMN TYPE orders.amount"
+      ],
+      "suggestion": "Add a new column with target type, dual-write in application, backfill, and drop old column.",
+      "details": "Changing column type for orders.amount can cause data truncation, type cast failures, or full table rewrite.",
+      "operations": [
+        {
+          "type": "ALTER_TYPE",
+          "target_table": "orders",
+          "target_column": "amount",
+          "raw_sql": "ALTER TABLE orders CHANGE COLUMN amount total_amount DECIMAL(10,2)",
+          "line_number": 1
+        }
+      ],
+      "analyzed_at": "2026-10-06T18:24:18.3657597-05:00",
+      "engine": "postgres",
+      "source": "heuristic"
+    },
+    "cached_at": "2026-10-06T18:24:18.3657597-05:00",
+    "cache_key": "9b1d1bf5aa01af5c8eefa795ac3aa37320557735f3059d12fefabd465fbe1b65"
+  },
+  "b080d0b9547e4203c0b7a1582171bab789b6fda7add5028f36f919aaa51a063a": {
+    "risk": {
+      "file": "fixtures\\migrations\\003_drop_table_critical.sql",
+      "level": "CRITICAL",
+      "reversible": false,
+      "destructive": true,
+      "touches_fks": false,
+      "exclusive_lock": true,
+      "category": "schema_change",
+      "confidence": 0.95,
+      "flags": [
+        "DROP TABLE legacy_users",
+        "always_critical rule: DROP TABLE"
+      ],
+      "suggestion": "Archive table \"legacy_users\" data before dropping or use a soft-delete deprecation strategy.",
+      "details": "Table \"legacy_users\" and all contained rows will be permanently destroyed.",
+      "operations": [
+        {
+          "type": "DROP_TABLE",
+          "target_table": "legacy_users",
+          "target_column": "",
+          "raw_sql": "DROP TABLE legacy_users",
+          "line_number": 1
+        }
+      ],
+      "analyzed_at": "2026-10-06T18:24:18.3633835-05:00",
+      "engine": "postgres",
+      "source": "heuristic"
+    },
+    "cached_at": "2026-10-06T18:24:18.3633835-05:00",
+    "cache_key": "b080d0b9547e4203c0b7a1582171bab789b6fda7add5028f36f919aaa51a063a"
+  }
+}

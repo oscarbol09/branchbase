@@ -169,7 +169,7 @@ func (m *DashboardModel) RenderView() string {
 	}
 
 	// 1. Header Card
-	b.WriteString(Bold + Green + "🌿 BranchBase Dashboard" + Reset + " " + Dim + "v0.3.0" + Reset + "\n")
+	b.WriteString(Bold + Green + "🌿 BranchBase Dashboard" + Reset + " " + Dim + "v0.4.0" + Reset + "\n")
 	b.WriteString(Dim + "─────────────────────────────────────────────────────────────────────────────" + Reset + "\n")
 	fmt.Fprintf(&b, "  • %-16s %s%s%s (sanitized: %s)\n", "Active Branch:", Bold+Cyan, m.ActiveBranch, Reset, m.SanitizedActive)
 	fmt.Fprintf(&b, "  • %-16s %s (%s)\n", "Database Engine:", Bold+driverName+Reset, backendHost)
