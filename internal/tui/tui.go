@@ -13,6 +13,7 @@ import (
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/git"
+	"golang.org/x/term"
 )
 
 // ANSI Styling Constants
@@ -308,6 +309,18 @@ func (m *DashboardModel) HandleKey(key string, ctx context.Context) (bool, error
 
 // Run executes the interactive TUI event loop reading keys from reader and rendering to writer.
 func Run(ctx context.Context, repoPath string, cfg *config.Config, drv driver.Driver, in io.Reader, out io.Writer) error {
+	if f, ok := in.(*os.File); ok {
+		fd := int(f.Fd())
+		if term.IsTerminal(fd) {
+			oldState, err := term.MakeRaw(fd)
+			if err == nil {
+				defer func() {
+					_ = term.Restore(fd, oldState)
+				}()
+			}
+		}
+	}
+
 	model := NewModel(repoPath, cfg, drv)
 	if err := model.Refresh(ctx); err != nil {
 		model.SetFlash(fmt.Sprintf("Initial load error: %v", err), "error")
@@ -342,23 +355,31 @@ func Run(ctx context.Context, repoPath string, cfg *config.Config, drv driver.Dr
 		var key string
 		switch b {
 		case 27: // Escape character
-			// Check if part of arrow sequence
-			if reader.Buffered() >= 2 {
-				next1, _ := reader.ReadByte()
-				next2, _ := reader.ReadByte()
-				if next1 == '[' {
-					switch next2 {
-					case 'A':
-						key = "up"
-					case 'B':
-						key = "down"
-					case 'C':
-						key = "right"
-					case 'D':
-						key = "left"
+			if reader.Buffered() > 0 {
+				next1, err1 := reader.ReadByte()
+				if err1 == nil && (next1 == '[' || next1 == 'O') {
+					if reader.Buffered() > 0 {
+						next2, err2 := reader.ReadByte()
+						if err2 == nil {
+							switch next2 {
+							case 'A':
+								key = "up"
+							case 'B':
+								key = "down"
+							case 'C':
+								key = "right"
+							case 'D':
+								key = "left"
+							case '1', '2', '3', '4', '5', '6', '7', '8':
+								if reader.Buffered() > 0 {
+									_, _ = reader.ReadByte()
+								}
+							}
+						}
 					}
 				}
-			} else {
+			}
+			if key == "" {
 				key = "esc"
 			}
 		case '\r', '\n':

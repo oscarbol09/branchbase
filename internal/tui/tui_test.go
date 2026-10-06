@@ -270,3 +270,32 @@ func TestTUIRunEventLoop(t *testing.T) {
 		t.Fatalf("expected output to contain dashboard render, got:\n%s", outStr)
 	}
 }
+
+func TestTUIRunArrowKeyNavigation(t *testing.T) {
+	t.Parallel()
+
+	drv := &mockDriver{
+		branches: []driver.BranchInfo{
+			{Name: "main", Database: "myapp_dev"},
+			{Name: "feature_1", Database: "myapp_dev_feature_1"},
+		},
+	}
+
+	cfg := config.DefaultConfig()
+	// Down arrow (\x1b[B), Up arrow (\x1b[A), then quit (q)
+	input := bytes.NewBufferString("\x1b[B\x1b[Aq")
+	var output bytes.Buffer
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := Run(ctx, t.TempDir(), &cfg, drv, input, &output)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	outStr := output.String()
+	if !strings.Contains(outStr, "BranchBase Dashboard") {
+		t.Fatalf("expected output to contain dashboard render, got:\n%s", outStr)
+	}
+}
