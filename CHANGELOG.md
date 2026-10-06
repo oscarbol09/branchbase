@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Native MongoDB Database Driver (`internal/driver/mongodb`)**: Full collection and metadata cloning using the Aggregation Framework (`$out` pipeline) and automated index reconstruction (#94).
+- **Environment Diagnostic Command (`branchbase doctor`)**: Comprehensive health check diagnosing Git repository integrity, hook installation, configuration validity, database connectivity, base database presence, and proxy port availability (#92).
+- **MySQL / MariaDB Wire-Protocol Interceptor (`internal/proxy/mysqlwire`)**: Inverted handshake handler intercepting `Protocol::HandshakeV10`, parsing `HandshakeResponse41`, and rewriting target database schemas for transparent MySQL connection routing (#87).
+- **MySQL Views, Triggers, and Generated Columns Replication**: Schema-level character set and collation inheritance, column filtering to prevent Error 3105 on virtual/stored generated columns, and automatic view and trigger DDL replication during branch creation (#112).
+- **Live Multi-Database E2E Test Suite**: Expanded GitHub Actions CI workflow with live containerized PostgreSQL 15, MySQL 8, and MongoDB 7 services.
 - **BranchBase Risk Gate (`branchbase risk`)**: Automated schema migration risk classification engine safeguarding preview and branch databases from destructive DDL (#95).
 - **TypeSafe Jev System One Integration (`internal/risk/jev.go`)**: Multi-question typed classification with calibrated probabilities for data loss, foreign key impact, and table locking.
 - **Deterministic Heuristic Offline Classifier (`internal/risk/heuristic.go`)**: Offline rule engine for recognized PostgreSQL, MySQL, and SQLite migration statements; unclassified SQL is escalated for manual review.
@@ -19,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TTY Detection & Safe Prompts (`internal/risk/tty.go`)**: Non-blocking fail-safe confirmation in non-interactive terminal contexts (VS Code Git, GUI clients).
 
 ### Fixed
+- **Proxy TLS Connection Descriptor Leak**: Explicitly tracked and cleaned up raw socket descriptors alongside TLS wrappers in deferred execution blocks, preventing memory leaks during SSL sessions (#108).
+- **TUI Raw Terminal Mode & ANSI Lookahead**: Integrated `golang.org/x/term` with `term.MakeRaw` and buffered lookahead parsing for ANSI escape sequences to prevent accidental exits on arrow key navigation (#110).
+- **SQLite WAL Checkpoint Integrity**: Enforced `PRAGMA wal_checkpoint(TRUNCATE)` before snapshotting to ensure consistent database copies (#113).
+- **PostgreSQL Connection Termination Before Cloning**: Terminated lingering connections to template databases in `CreateBranch` to prevent cloning errors.
 - Compare `DatabaseNameForBranch` against a sanitized `DefaultBranch` so names like `release/v1` resolve to the base database instead of `base_release_v1` (#91).
 
 ## [0.3.0] - 2026-09-16
