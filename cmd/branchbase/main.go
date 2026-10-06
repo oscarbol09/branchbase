@@ -14,6 +14,7 @@ import (
 
 	"github.com/branchbase/branchbase/internal/compose"
 	"github.com/branchbase/branchbase/internal/config"
+	"github.com/branchbase/branchbase/internal/doctor"
 	"github.com/branchbase/branchbase/internal/driver"
 	_ "github.com/branchbase/branchbase/internal/driver/mongodb"
 	_ "github.com/branchbase/branchbase/internal/driver/mysql"
@@ -56,6 +57,7 @@ Risk Gate (Schema Analysis):
   risk check           Verify pending migrations against .branchbase/risk-policy.yml
 
 Other:
+  doctor        Run environment diagnostic health checks
   version       Print the version of BranchBase
   completion    Print shell completion script (bash|zsh|fish|powershell)
   help          Show help for command
@@ -125,6 +127,9 @@ func main() {
 	}
 
 	switch command {
+	case "doctor":
+		runDoctor(cwd, customConfig)
+
 	case "version", "-v", "--version":
 		fmt.Printf("BranchBase v%s 🌿\n", Version)
 		fmt.Println("Crafted with 💚 by Oscar Madera (@oscarbol09)")
@@ -913,3 +918,15 @@ func logHookError(cwd, msg string) {
 		if err := f.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close f: %v\n", err) }
 	}
 }
+
+func runDoctor(cwd, customConfig string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	report := doctor.Run(ctx, cwd, customConfig)
+	fmt.Print(doctor.FormatReport(report))
+	if !report.AllPassed {
+		os.Exit(1)
+	}
+}
+
