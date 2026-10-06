@@ -294,15 +294,24 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		// Inspect non-generated columns to prevent MySQL Error 3105 on generated columns
 		colQuery := "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA NOT LIKE '%GENERATED%' ORDER BY ORDINAL_POSITION"
 		colRows, colErr := conn.QueryContext(ctx, colQuery, sourceDB, tbl)
+		if colErr != nil {
+			return fmt.Errorf("failed to inspect columns for table %q: %w", tbl, colErr)
+		}
 		var insertCols []string
-		if colErr == nil {
-			for colRows.Next() {
-				var colName string
-				if err := colRows.Scan(&colName); err == nil {
-					insertCols = append(insertCols, QuoteIdentifier(colName))
-				}
+		for colRows.Next() {
+			var colName string
+			if err := colRows.Scan(&colName); err != nil {
+				_ = colRows.Close()
+				return fmt.Errorf("failed to scan column for table %q: %w", tbl, err)
 			}
+			insertCols = append(insertCols, QuoteIdentifier(colName))
+		}
+		if err := colRows.Err(); err != nil {
 			_ = colRows.Close()
+			return fmt.Errorf("column iteration error for table %q: %w", tbl, err)
+		}
+		if err := colRows.Close(); err != nil {
+			return fmt.Errorf("failed to close column rows for table %q: %w", tbl, err)
 		}
 
 		var insertDataSQL string
@@ -321,23 +330,37 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 	// Step 4: Replicate Views
 	viewQuery := "SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?"
 	vRows, vErr := conn.QueryContext(ctx, viewQuery, sourceDB)
-	if vErr == nil {
-		var views []string
-		for vRows.Next() {
-			var vName string
-			if err := vRows.Scan(&vName); err == nil {
-				views = append(views, vName)
-			}
+	if vErr != nil {
+		return fmt.Errorf("failed to query views in %q: %w", sourceDB, vErr)
+	}
+	var views []string
+	for vRows.Next() {
+		var vName string
+		if err := vRows.Scan(&vName); err != nil {
+			_ = vRows.Close()
+			return fmt.Errorf("failed to scan view name: %w", err)
 		}
+		views = append(views, vName)
+	}
+	if err := vRows.Err(); err != nil {
 		_ = vRows.Close()
+		return fmt.Errorf("view iteration error: %w", err)
+	}
+	if err := vRows.Close(); err != nil {
+		return fmt.Errorf("failed to close view rows: %w", err)
+	}
 
-		for _, v := range views {
-			var viewName, createViewSQL, csClient, collConn sql.NullString
-			showQuery := fmt.Sprintf("SHOW CREATE VIEW %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(v))
-			if err := conn.QueryRowContext(ctx, showQuery).Scan(&viewName, &createViewSQL, &csClient, &collConn); err == nil && createViewSQL.Valid {
-				rewrittenSQL := strings.ReplaceAll(createViewSQL.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
-				rewrittenSQL = strings.ReplaceAll(rewrittenSQL, sourceDB+".", targetDB+".")
-				_, _ = conn.ExecContext(ctx, rewrittenSQL)
+	for _, v := range views {
+		var viewName, createViewSQL, csClient, collConn sql.NullString
+		showQuery := fmt.Sprintf("SHOW CREATE VIEW %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(v))
+		if err := conn.QueryRowContext(ctx, showQuery).Scan(&viewName, &createViewSQL, &csClient, &collConn); err != nil {
+			return fmt.Errorf("failed to fetch CREATE VIEW for %q: %w", v, err)
+		}
+		if createViewSQL.Valid {
+			rewrittenSQL := strings.ReplaceAll(createViewSQL.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
+			rewrittenSQL = strings.ReplaceAll(rewrittenSQL, sourceDB+".", targetDB+".")
+			if _, err := conn.ExecContext(ctx, rewrittenSQL); err != nil {
+				return fmt.Errorf("failed to create view %q in %q: %w", v, targetDB, err)
 			}
 		}
 	}
@@ -345,25 +368,41 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 	// Step 5: Replicate Triggers
 	triggerQuery := "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?"
 	tRows, tErr := conn.QueryContext(ctx, triggerQuery, sourceDB)
-	if tErr == nil {
-		var triggers []string
-		for tRows.Next() {
-			var trgName string
-			if err := tRows.Scan(&trgName); err == nil {
-				triggers = append(triggers, trgName)
-			}
+	if tErr != nil {
+		return fmt.Errorf("failed to query triggers in %q: %w", sourceDB, tErr)
+	}
+	var triggers []string
+	for tRows.Next() {
+		var trgName string
+		if err := tRows.Scan(&trgName); err != nil {
+			_ = tRows.Close()
+			return fmt.Errorf("failed to scan trigger name: %w", err)
 		}
+		triggers = append(triggers, trgName)
+	}
+	if err := tRows.Err(); err != nil {
 		_ = tRows.Close()
+		return fmt.Errorf("trigger iteration error: %w", err)
+	}
+	if err := tRows.Close(); err != nil {
+		return fmt.Errorf("failed to close trigger rows: %w", err)
+	}
 
-		if len(triggers) > 0 {
-			_, _ = conn.ExecContext(ctx, fmt.Sprintf("USE %s;", QuoteIdentifier(targetDB)))
-			for _, trg := range triggers {
-				var trgN, sqlMode, origStmt, csCl, collCo, dbColl, created sql.NullString
-				showTrgQuery := fmt.Sprintf("SHOW CREATE TRIGGER %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(trg))
-				if err := conn.QueryRowContext(ctx, showTrgQuery).Scan(&trgN, &sqlMode, &origStmt, &csCl, &collCo, &dbColl, &created); err == nil && origStmt.Valid {
-					rewrittenTrg := strings.ReplaceAll(origStmt.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
-					rewrittenTrg = strings.ReplaceAll(rewrittenTrg, sourceDB+".", targetDB+".")
-					_, _ = conn.ExecContext(ctx, rewrittenTrg)
+	if len(triggers) > 0 {
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("USE %s;", QuoteIdentifier(targetDB))); err != nil {
+			return fmt.Errorf("failed to select target database %q for triggers: %w", targetDB, err)
+		}
+		for _, trg := range triggers {
+			var trgN, sqlMode, origStmt, csCl, collCo, dbColl, created sql.NullString
+			showTrgQuery := fmt.Sprintf("SHOW CREATE TRIGGER %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(trg))
+			if err := conn.QueryRowContext(ctx, showTrgQuery).Scan(&trgN, &sqlMode, &origStmt, &csCl, &collCo, &dbColl, &created); err != nil {
+				return fmt.Errorf("failed to fetch CREATE TRIGGER for %q: %w", trg, err)
+			}
+			if origStmt.Valid {
+				rewrittenTrg := strings.ReplaceAll(origStmt.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
+				rewrittenTrg = strings.ReplaceAll(rewrittenTrg, sourceDB+".", targetDB+".")
+				if _, err := conn.ExecContext(ctx, rewrittenTrg); err != nil {
+					return fmt.Errorf("failed to create trigger %q in %q: %w", trg, targetDB, err)
 				}
 			}
 		}
