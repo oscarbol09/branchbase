@@ -53,6 +53,7 @@ jobs:
 
   test:
     name: Test & Build (${{ matrix.os }} - Go ${{ matrix.go-version }})
+    needs: [lint, security]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
@@ -89,7 +90,8 @@ jobs:
         run: go build -v -o bin/branchbase ./cmd/branchbase
 
   integration-test:
-    name: E2E Integration (PostgreSQL Service)
+    name: E2E Integration (DB Services)
+    needs: [test]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -106,6 +108,32 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: myapp_dev
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+      mongo:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: root
+          MONGO_INITDB_DATABASE: admin
+        ports:
+          - 27018:27017
+        options: >-
+          --health-cmd "echo 'db.runCommand(\"ping\").ok' | mongosh localhost:27017/test --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -123,4 +151,7 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: postgres
           PGDATABASE: myapp_dev
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3307
+          MONGO_URI: mongodb://root:root@127.0.0.1:27018/admin?authSource=admin
         run: go test -v -tags=integration ./test/integration/...
