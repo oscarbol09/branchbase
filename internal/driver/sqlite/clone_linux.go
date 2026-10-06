@@ -22,7 +22,7 @@ func CloneFile(src, dst string) error {
 		return fmt.Errorf("failed to open source file %q: %w", src, err)
 	}
 	defer func() {
-		_ = srcFile.Close()
+		if err := srcFile.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close srcFile: %v\n", err) }
 	}()
 
 	info, err := srcFile.Stat()
@@ -37,7 +37,7 @@ func CloneFile(src, dst string) error {
 
 	// Attempt Linux FICLONE ioctl
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, dstFile.Fd(), ficlone, srcFile.Fd())
-	_ = dstFile.Close()
+	if err := dstFile.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close dstFile: %v\n", err) }
 
 	if errno == 0 {
 		// Reflink succeeded!

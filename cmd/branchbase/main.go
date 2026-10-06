@@ -15,6 +15,7 @@ import (
 	"github.com/branchbase/branchbase/internal/compose"
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
+	_ "github.com/branchbase/branchbase/internal/driver/mongodb"
 	_ "github.com/branchbase/branchbase/internal/driver/mysql"
 	_ "github.com/branchbase/branchbase/internal/driver/postgres"
 	_ "github.com/branchbase/branchbase/internal/driver/sqlite"
@@ -445,7 +446,7 @@ func runTUI(cwd string, configPath ...string) {
 		os.Exit(1)
 	}
 	defer func() {
-		_ = drv.Close()
+		if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -499,7 +500,7 @@ func runSwitch(cwd, targetBranch string, noCreate bool, configPath ...string) {
 		return
 	}
 	defer func() {
-		_ = drv.Close()
+		if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -543,7 +544,7 @@ func runProxy(cwd string, configPath ...string) {
 		fmt.Printf("⚠️  Could not initialize driver for %s: %v (JIT provisioning disabled)\n", cfg.Driver, err)
 	} else {
 		defer func() {
-			_ = drv.Close()
+			if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 		}()
 	}
 
@@ -579,7 +580,7 @@ func runList(cwd string, jsonOutput bool, configPath ...string) {
 		os.Exit(1)
 	}
 	defer func() {
-		_ = drv.Close()
+		if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -663,7 +664,7 @@ func runPrune(cwd string, dryRun, force bool, configPath ...string) {
 		os.Exit(1)
 	}
 	defer func() {
-		_ = drv.Close()
+		if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -883,7 +884,7 @@ func runHookTrigger(cwd string, args []string, configPath ...string) {
 		return
 	}
 	defer func() {
-		_ = drv.Close()
+		if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	}()
 	if drv.Name() == "mysql" || drv.Name() == "mariadb" {
 		logHookError(cwd, fmt.Sprintf("deferred prewarming %q to proxy JIT provisioning because MySQL schema replication is visible while it is copied", sanitized))
@@ -909,6 +910,6 @@ func logHookError(cwd, msg string) {
 	f, err := os.OpenFile(filepath.Join(cwd, ".branchbase.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err == nil {
 		_, _ = f.WriteString(logLine)
-		_ = f.Close()
+		if err := f.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close f: %v\n", err) }
 	}
 }

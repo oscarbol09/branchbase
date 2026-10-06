@@ -116,7 +116,7 @@ func completeSwitchBranches(cwd string) []string {
 			ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 			list, listErr := drv.ListBranches(ctx)
 			cancel()
-			_ = drv.Close()
+			if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 			if listErr == nil {
 				for _, b := range list {
 					add(b.Name)

@@ -1,6 +1,9 @@
 package mysql
 
 import (
+	"os"
+)
+import (
 	"context"
 	"database/sql"
 	sqldriver "database/sql/driver"
@@ -223,7 +226,7 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		return fmt.Errorf("failed to reserve mysql connection: %w", err)
 	}
 	defer func() {
-		_ = conn.Close()
+		if err := conn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close conn: %v\n", err) }
 	}()
 
 	if _, err := conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=0"); err != nil {
@@ -248,7 +251,7 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		return fmt.Errorf("failed to list tables in %q: %w", sourceDB, err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if err := rows.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close rows: %v\n", err) }
 	}()
 
 	var tables []string
@@ -330,7 +333,7 @@ func (d *MySQLDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, er
 		return nil, err
 	}
 	defer func() {
-		_ = rows.Close()
+		if err := rows.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close rows: %v\n", err) }
 	}()
 
 	var schemas []string
@@ -356,7 +359,7 @@ func (d *MySQLDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, er
 	sizes := make(map[string]int64)
 	if err == nil {
 		defer func() {
-			_ = sizeRows.Close()
+			if err := sizeRows.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close sizeRows: %v\n", err) }
 		}()
 		for sizeRows.Next() {
 			var sch string

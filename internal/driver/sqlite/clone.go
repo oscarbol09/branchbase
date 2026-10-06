@@ -14,7 +14,7 @@ func copyFileChunked(src, dst string) error {
 		return fmt.Errorf("failed to open source file %q: %w", src, err)
 	}
 	defer func() {
-		_ = srcFile.Close()
+		if err := srcFile.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close srcFile: %v\n", err) }
 	}()
 
 	info, err := srcFile.Stat()
@@ -27,7 +27,7 @@ func copyFileChunked(src, dst string) error {
 		return fmt.Errorf("failed to create destination file %q: %w", dst, err)
 	}
 	defer func() {
-		_ = dstFile.Close()
+		if err := dstFile.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close dstFile: %v\n", err) }
 	}()
 
 	buf := make([]byte, 1024*1024) // 1MB buffer for high throughput

@@ -118,14 +118,14 @@ func resolveIntrospector(cfg *config.Config, schemaBranch string) (risk.SchemaIn
 		if pgDrv, ok := drv.(interface{ OpenDatabase(string) (*sql.DB, error) }); ok {
 			databaseName := cfg.DatabaseNameForBranch(git.SanitizeBranchName(schemaBranch))
 			db, err := pgDrv.OpenDatabase(databaseName)
-			_ = drv.Close()
+			if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 			if err == nil {
-				return risk.NewPostgresIntrospector(db), func() { _ = db.Close() }
+				return risk.NewPostgresIntrospector(db), func() { if err := db.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close db: %v\n", err) } }
 			}
 		}
 	}
 
-	_ = drv.Close()
+	if err := drv.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close drv: %v\n", err) }
 	return risk.NewMockIntrospector(), func() {}
 }
 

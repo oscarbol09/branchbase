@@ -227,7 +227,7 @@ func (s *Server) closeActiveConns() {
 	s.activeMu.Lock()
 	defer s.activeMu.Unlock()
 	for c := range s.activeConns {
-		_ = c.Close()
+		if err := c.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close c: %v\n", err) }
 	}
 }
 
@@ -260,7 +260,7 @@ func (s *Server) acceptLoop(ctx context.Context) {
 			l := s.listener
 			s.mu.Unlock()
 			if l != nil {
-				_ = l.Close()
+				if err := l.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close l: %v\n", err) }
 			}
 		case <-stopWait:
 		}
@@ -301,7 +301,7 @@ func (s *Server) acceptLoop(ctx context.Context) {
 		select {
 		case s.connectionSlots <- struct{}{}:
 		default:
-			_ = clientConn.Close()
+			if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
 			continue
 		}
 
@@ -361,13 +361,13 @@ func (s *Server) dialBackend() (net.Conn, string, error) {
 func (s *Server) handleConnection(clientConn net.Conn) {
 	defer func() { <-s.connectionSlots }()
 	if err := clientConn.SetDeadline(time.Now().Add(startupTimeout)); err != nil {
-		_ = clientConn.Close()
+		if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
 		return
 	}
 	s.addActiveConn(clientConn)
 	defer func() {
 		s.removeActiveConn(clientConn)
-		_ = clientConn.Close()
+		if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
 	}()
 
 	// 1. Resolve active Git branch
@@ -412,7 +412,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	s.addActiveConn(backendConn)
 	defer func() {
 		s.removeActiveConn(backendConn)
-		_ = backendConn.Close()
+		if err := backendConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close backendConn: %v\n", err) }
 	}()
 
 	// 3. PostgreSQL Wire Protocol Handshake Inspection & Rewriting
@@ -493,7 +493,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	}()
 
 	<-errc
-	_ = clientConn.Close()
-	_ = backendConn.Close()
+	if err := clientConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close clientConn: %v\n", err) }
+	if err := backendConn.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close backendConn: %v\n", err) }
 	<-errc
 }
