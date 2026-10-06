@@ -15,7 +15,7 @@ branchbase init
 
 `branchbase init` performs the following automated steps:
 1. Detects your Git workspace and active branch.
-2. Auto-inspects `docker-compose.yml` or local database configurations (PostgreSQL, MySQL, SQLite).
+2. Auto-inspects `docker-compose.yml` or local database configurations (PostgreSQL, MySQL, SQLite, MongoDB).
 3. Generates a lightweight `.branchbase.json` configuration file.
 4. Installs automated `post-checkout` and `post-merge` Git hooks into `.git/hooks/`.
 

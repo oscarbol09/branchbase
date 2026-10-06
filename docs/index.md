@@ -1,6 +1,6 @@
 # BranchBase
 
-> **Zero-config, Git-native local database branching for PostgreSQL, MySQL, and SQLite.**  
+> **Zero-config, Git-native local database branching for PostgreSQL, MySQL, SQLite, and MongoDB.**  
 > Stop dropping your local database every time you switch Git branches.
 
 ---
