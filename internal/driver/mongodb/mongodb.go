@@ -106,10 +106,10 @@ func (d *MongoDBDriver) CreateBranch(ctx context.Context, sourceBranch, targetBr
 		
 		// Use aggregation $out to copy to the target database
 		pipeline := mongo.Pipeline{
-			bson.D{{"$match", bson.D{}}},
-			bson.D{{"$out", bson.D{
-				{"db", targetDB},
-				{"coll", collName},
+			bson.D{{Key: "$match", Value: bson.D{}}},
+			bson.D{{Key: "$out", Value: bson.D{
+				{Key: "db", Value: targetDB},
+				{Key: "coll", Value: collName},
 			}}},
 		}
 		cursor, err := srcColl.Aggregate(ctx, pipeline)
