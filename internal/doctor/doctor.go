@@ -190,6 +190,12 @@ func Run(ctx context.Context, repoPath, customConfig string) *DoctorReport {
 
 			exists, err := drv.BranchExists(existsCtx, sanitizedBase)
 			baseDbName := cfg.DatabaseNameForBranch(sanitizedBase)
+			if cfg.Driver == "sqlite" {
+				baseDbName = cfg.Connection.Path
+				if baseDbName == "" {
+					baseDbName = cfg.Connection.BaseDatabase
+				}
+			}
 			if err != nil || !exists {
 				addCheck(CheckResult{
 					Name:    "Base Database",
