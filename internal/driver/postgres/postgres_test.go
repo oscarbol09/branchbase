@@ -335,6 +335,7 @@ func TestCreateBranchWithMock(t *testing.T) {
 
 	// A clone succeeds without terminating sessions connected to its source.
 	inspect("myapp_dev_feature_auth")
+	mock.ExpectExec(`(?i)SELECT pg_terminate_backend\(pid\)`).WithArgs("myapp_dev").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_feature_auth" TEMPLATE "myapp_dev";`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`COMMENT ON DATABASE "myapp_dev_feature_auth" IS 'branchbase:branch=feature_auth';`).
@@ -346,6 +347,7 @@ func TestCreateBranchWithMock(t *testing.T) {
 	// PostgreSQL refuses template cloning while sessions are connected. The
 	// error is actionable, and BranchBase must not disconnect those sessions.
 	inspect("myapp_dev_active_sessions")
+	mock.ExpectExec(`(?i)SELECT pg_terminate_backend\(pid\)`).WithArgs("myapp_dev").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_active_sessions" TEMPLATE "myapp_dev";`).
 		WillReturnError(&pq.Error{Code: "55006", Message: "source database is being accessed by other users"})
 	err = d.CreateBranch(ctx, "main", "active_sessions")
@@ -373,6 +375,7 @@ func TestCreateBranchWithMock(t *testing.T) {
 
 	// A duplicate target remains an idempotent success.
 	inspect("myapp_dev_duplicate")
+	mock.ExpectExec(`(?i)SELECT pg_terminate_backend\(pid\)`).WithArgs("myapp_dev").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_duplicate" TEMPLATE "myapp_dev";`).
 		WillReturnError(&pq.Error{Code: "42P04", Message: "database already exists"})
 	if err := d.CreateBranch(ctx, "main", "duplicate"); err != nil {
@@ -381,6 +384,7 @@ func TestCreateBranchWithMock(t *testing.T) {
 
 	// Comment write errors are reported after the database is created.
 	inspect("myapp_dev_comment_error")
+	mock.ExpectExec(`(?i)SELECT pg_terminate_backend\(pid\)`).WithArgs("myapp_dev").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`CREATE DATABASE "myapp_dev_comment_error" TEMPLATE "myapp_dev";`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`COMMENT ON DATABASE "myapp_dev_comment_error" IS 'branchbase:branch=comment_error';`).

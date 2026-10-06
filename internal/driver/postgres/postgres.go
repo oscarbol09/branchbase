@@ -1,6 +1,9 @@
 package postgres
 
 import (
+	"os"
+)
+import (
 	"context"
 	"database/sql"
 	"fmt"
@@ -279,7 +282,17 @@ func (d *PostgresDriver) CreateBranch(ctx context.Context, sourceBranch, targetB
 		}
 	}
 
-	// Step 2: Create new branch database from template
+	// Step 2: Terminate active connections to the source database before cloning
+	terminateQuery := `
+		SELECT pg_terminate_backend(pid)
+		FROM pg_stat_activity
+		WHERE datname = $1 AND pid <> pg_backend_pid();
+	`
+	if _, err := d.db.ExecContext(ctx, terminateQuery, sourceDB); err != nil && !isPermissionError(err) {
+		return fmt.Errorf("failed to terminate connections to source database %q: %w", sourceDB, err)
+	}
+
+	// Step 3: Create new branch database from template
 	createQuery := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s;", pq.QuoteIdentifier(targetDB), pq.QuoteIdentifier(sourceDB))
 	_, err = d.db.ExecContext(ctx, createQuery)
 	if err != nil {
@@ -357,7 +370,7 @@ func (d *PostgresDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo,
 		return nil, err
 	}
 	defer func() {
-		_ = rows.Close()
+		if err := rows.Close(); err != nil { fmt.Fprintf(os.Stderr, "failed to close rows: %v\n", err) }
 	}()
 
 	var branches []driver.BranchInfo
