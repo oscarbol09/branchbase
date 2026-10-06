@@ -141,8 +141,13 @@ func TestMySQLCreateBranch(t *testing.T) {
 	drv := NewWithDB(Config{BaseDatabase: "myapp_dev"}, db)
 	ctx := context.Background()
 
-	// Expect create database
-	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE `myapp_dev_feature_b`;")).
+	// Expect query for schema collation
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?")).
+		WithArgs("myapp_dev").
+		WillReturnRows(sqlmock.NewRows([]string{"DEFAULT_CHARACTER_SET_NAME", "DEFAULT_COLLATION_NAME"}).AddRow("utf8mb4", "utf8mb4_unicode_ci"))
+
+	// Expect create database with charset
+	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE `myapp_dev_feature_b` CHARACTER SET `utf8mb4` COLLATE `utf8mb4_unicode_ci`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=0")).
@@ -153,16 +158,38 @@ func TestMySQLCreateBranch(t *testing.T) {
 		WithArgs("myapp_dev").
 		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("orders").AddRow("users"))
 
-	// Child table first: copy must still succeed with FOREIGN_KEY_CHECKS off.
+	// Column inspection for orders (excluding generated columns)
 	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`orders` LIKE `myapp_dev`.`orders`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` SELECT * FROM `myapp_dev`.`orders`;")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA NOT LIKE '%GENERATED%' ORDER BY ORDINAL_POSITION")).
+		WithArgs("myapp_dev", "orders").
+		WillReturnRows(sqlmock.NewRows([]string{"COLUMN_NAME"}).AddRow("id").AddRow("amount"))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` (`id`, `amount`) SELECT `id`, `amount` FROM `myapp_dev`.`orders`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
+	// Column inspection for users
 	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`users` LIKE `myapp_dev`.`users`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`users` SELECT * FROM `myapp_dev`.`users`;")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA NOT LIKE '%GENERATED%' ORDER BY ORDINAL_POSITION")).
+		WithArgs("myapp_dev", "users").
+		WillReturnRows(sqlmock.NewRows([]string{"COLUMN_NAME"}).AddRow("id").AddRow("name"))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`users` (`id`, `name`) SELECT `id`, `name` FROM `myapp_dev`.`users`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Views inspection
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?")).
+		WithArgs("myapp_dev").
+		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("active_users"))
+	mock.ExpectQuery(regexp.QuoteMeta("SHOW CREATE VIEW `myapp_dev`.`active_users`")).
+		WillReturnRows(sqlmock.NewRows([]string{"View", "Create View", "character_set_client", "collation_connection"}).
+			AddRow("active_users", "CREATE VIEW `myapp_dev`.`active_users` AS SELECT * FROM `myapp_dev`.`users`", "utf8mb4", "utf8mb4_unicode_ci"))
+	mock.ExpectExec(regexp.QuoteMeta("CREATE VIEW `myapp_dev_feature_b`.`active_users` AS SELECT * FROM `myapp_dev_feature_b`.`users`")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	// Triggers inspection
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?")).
+		WithArgs("myapp_dev").
+		WillReturnRows(sqlmock.NewRows([]string{"TRIGGER_NAME"}))
 
 	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=1")).
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -190,6 +217,10 @@ func TestMySQLCreateBranchRestoresForeignKeyChecksOnInsertError(t *testing.T) {
 	ctx := context.Background()
 	insertErr := errors.New("Error 1452: Cannot add or update a child row: a foreign key constraint fails")
 
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?")).
+		WithArgs("myapp_dev").
+		WillReturnError(sql.ErrNoRows)
+
 	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE `myapp_dev_feature_b`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=0")).
@@ -199,7 +230,10 @@ func TestMySQLCreateBranchRestoresForeignKeyChecksOnInsertError(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"TABLE_NAME"}).AddRow("orders"))
 	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE IF NOT EXISTS `myapp_dev_feature_b`.`orders` LIKE `myapp_dev`.`orders`;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` SELECT * FROM `myapp_dev`.`orders`;")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA NOT LIKE '%GENERATED%' ORDER BY ORDINAL_POSITION")).
+		WithArgs("myapp_dev", "orders").
+		WillReturnRows(sqlmock.NewRows([]string{"COLUMN_NAME"}).AddRow("id"))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `myapp_dev_feature_b`.`orders` (`id`) SELECT `id` FROM `myapp_dev`.`orders`;")).
 		WillReturnError(insertErr)
 	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=1")).
 		WillReturnResult(sqlmock.NewResult(0, 0))

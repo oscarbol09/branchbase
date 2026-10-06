@@ -192,7 +192,7 @@ func (d *MySQLDriver) BranchExists(ctx context.Context, branchName string) (bool
 	return true, nil
 }
 
-// CreateBranch clones sourceBranch into targetBranch by replicating tables and rows.
+// CreateBranch clones sourceBranch into targetBranch by replicating tables, views, triggers, and rows.
 func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBranch string) (retErr error) {
 	if d.db == nil {
 		return fmt.Errorf("mysql connection not initialized")
@@ -200,10 +200,22 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 	sourceDB := d.formatDBName(sourceBranch)
 	targetDB := d.formatDBName(targetBranch)
 
-	// Step 1: Create target database schema
+	// Step 1: Detect Character Set & Collation from source database schema
+	var charset, collation string
+	schemaInfoQuery := "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?"
+	_ = d.db.QueryRowContext(ctx, schemaInfoQuery, sourceDB).Scan(&charset, &collation)
+
 	createDBSQL := fmt.Sprintf("CREATE DATABASE %s;", QuoteIdentifier(targetDB))
+	if charset != "" && collation != "" {
+		createDBSQL = fmt.Sprintf("CREATE DATABASE %s CHARACTER SET %s COLLATE %s;", QuoteIdentifier(targetDB), QuoteIdentifier(charset), QuoteIdentifier(collation))
+	}
+
 	if _, err := d.db.ExecContext(ctx, createDBSQL); err != nil {
-		return fmt.Errorf("failed to create database %q: %w", targetDB, err)
+		// Fallback to standard CREATE DATABASE if custom charset fails
+		fallbackSQL := fmt.Sprintf("CREATE DATABASE %s;", QuoteIdentifier(targetDB))
+		if _, fbErr := d.db.ExecContext(ctx, fallbackSQL); fbErr != nil {
+			return fmt.Errorf("failed to create database %q: %w", targetDB, err)
+		}
 	}
 	created := true
 	defer func() {
@@ -269,7 +281,7 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 		return err
 	}
 
-	// Step 3: Clone each table structure and copy data
+	// Step 3: Clone each table structure and copy data (excluding generated columns)
 	for _, tbl := range tables {
 		qTargetTbl := fmt.Sprintf("%s.%s", QuoteIdentifier(targetDB), QuoteIdentifier(tbl))
 		qSourceTbl := fmt.Sprintf("%s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(tbl))
@@ -279,9 +291,81 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 			return fmt.Errorf("failed to create table %q: %w", tbl, err)
 		}
 
-		insertDataSQL := fmt.Sprintf("INSERT INTO %s SELECT * FROM %s;", qTargetTbl, qSourceTbl)
+		// Inspect non-generated columns to prevent MySQL Error 3105 on generated columns
+		colQuery := "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA NOT LIKE '%GENERATED%' ORDER BY ORDINAL_POSITION"
+		colRows, colErr := conn.QueryContext(ctx, colQuery, sourceDB, tbl)
+		var insertCols []string
+		if colErr == nil {
+			for colRows.Next() {
+				var colName string
+				if err := colRows.Scan(&colName); err == nil {
+					insertCols = append(insertCols, QuoteIdentifier(colName))
+				}
+			}
+			_ = colRows.Close()
+		}
+
+		var insertDataSQL string
+		if len(insertCols) > 0 {
+			colList := strings.Join(insertCols, ", ")
+			insertDataSQL = fmt.Sprintf("INSERT INTO %s (%s) SELECT %s FROM %s;", qTargetTbl, colList, colList, qSourceTbl)
+		} else {
+			insertDataSQL = fmt.Sprintf("INSERT INTO %s SELECT * FROM %s;", qTargetTbl, qSourceTbl)
+		}
+
 		if _, err := conn.ExecContext(ctx, insertDataSQL); err != nil {
 			return fmt.Errorf("failed to copy data for table %q: %w", tbl, err)
+		}
+	}
+
+	// Step 4: Replicate Views
+	viewQuery := "SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?"
+	vRows, vErr := conn.QueryContext(ctx, viewQuery, sourceDB)
+	if vErr == nil {
+		var views []string
+		for vRows.Next() {
+			var vName string
+			if err := vRows.Scan(&vName); err == nil {
+				views = append(views, vName)
+			}
+		}
+		_ = vRows.Close()
+
+		for _, v := range views {
+			var viewName, createViewSQL, csClient, collConn sql.NullString
+			showQuery := fmt.Sprintf("SHOW CREATE VIEW %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(v))
+			if err := conn.QueryRowContext(ctx, showQuery).Scan(&viewName, &createViewSQL, &csClient, &collConn); err == nil && createViewSQL.Valid {
+				rewrittenSQL := strings.ReplaceAll(createViewSQL.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
+				rewrittenSQL = strings.ReplaceAll(rewrittenSQL, sourceDB+".", targetDB+".")
+				_, _ = conn.ExecContext(ctx, rewrittenSQL)
+			}
+		}
+	}
+
+	// Step 5: Replicate Triggers
+	triggerQuery := "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?"
+	tRows, tErr := conn.QueryContext(ctx, triggerQuery, sourceDB)
+	if tErr == nil {
+		var triggers []string
+		for tRows.Next() {
+			var trgName string
+			if err := tRows.Scan(&trgName); err == nil {
+				triggers = append(triggers, trgName)
+			}
+		}
+		_ = tRows.Close()
+
+		if len(triggers) > 0 {
+			_, _ = conn.ExecContext(ctx, fmt.Sprintf("USE %s;", QuoteIdentifier(targetDB)))
+			for _, trg := range triggers {
+				var trgN, sqlMode, origStmt, csCl, collCo, dbColl, created sql.NullString
+				showTrgQuery := fmt.Sprintf("SHOW CREATE TRIGGER %s.%s", QuoteIdentifier(sourceDB), QuoteIdentifier(trg))
+				if err := conn.QueryRowContext(ctx, showTrgQuery).Scan(&trgN, &sqlMode, &origStmt, &csCl, &collCo, &dbColl, &created); err == nil && origStmt.Valid {
+					rewrittenTrg := strings.ReplaceAll(origStmt.String, QuoteIdentifier(sourceDB)+".", QuoteIdentifier(targetDB)+".")
+					rewrittenTrg = strings.ReplaceAll(rewrittenTrg, sourceDB+".", targetDB+".")
+					_, _ = conn.ExecContext(ctx, rewrittenTrg)
+				}
+			}
 		}
 	}
 
