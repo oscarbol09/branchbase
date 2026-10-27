@@ -121,3 +121,37 @@ always_critical:
 		t.Errorf("expected on_jev_unavailable block, got %s", p.OnJevUnavailable)
 	}
 }
+
+func TestPolicyPathExclusionDirectoryBoundaries(t *testing.T) {
+	policy := &RiskPolicy{ExcludePaths: []string{filepath.Join("migrations", "seeds", "**")}}
+	for _, tt := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"directory", filepath.Join("migrations", "seeds"), true},
+		{"direct child", filepath.Join("migrations", "seeds", "001.sql"), true},
+		{"nested child", filepath.Join("migrations", "seeds", "users", "001.sql"), true},
+		{"sibling directory", filepath.Join("migrations", "seeds_archive", "001_initial.sql"), false},
+		{"sibling suffix", filepath.Join("migrations", "seeds2", "001.sql"), false},
+		{"sibling file", filepath.Join("migrations", "seeds.sql"), false},
+		{"parent directory", "migrations", false},
+		{"unrelated", filepath.Join("other", "seeds", "001.sql"), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policy.IsPathExcluded(tt.path); got != tt.want {
+				t.Errorf("IsPathExcluded(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPolicyPathExclusionOrdinaryGlob(t *testing.T) {
+	policy := &RiskPolicy{ExcludePaths: []string{filepath.Join("migrations", "*.seed.sql")}}
+	if !policy.IsPathExcluded(filepath.Join("migrations", "users.seed.sql")) {
+		t.Error("ordinary filename glob should still match")
+	}
+	if policy.IsPathExcluded(filepath.Join("migrations", "users.sql")) {
+		t.Error("unmatched filename should not be excluded")
+	}
+}

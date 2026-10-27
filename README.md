@@ -94,6 +94,11 @@ BranchBase pairs automated Git branch transitions with database cloning mechanis
 | `branchbase prune [--dry-run] [--force]` | Reconcile merged/orphaned branches and safely delete corresponding databases |
 | `branchbase version` | Print the current BranchBase version, author, and repository URL |
 
+Risk policy `exclude_paths` patterns ending in `/**` exclude that directory and
+its descendants. For example, `migrations/seeds/**` excludes
+`migrations/seeds/users/001.sql`, but not `migrations/seeds_archive/001.sql` or
+`migrations/seeds.sql`; those paths still undergo risk assessment.
+
 ---
 
 ## Repository Structure
