@@ -23,6 +23,9 @@ func (h *HeuristicClassifier) Name() string {
 var (
 	reCascade          = regexp.MustCompile(`(?i)\bCASCADE\b`)
 	reDataManipulation = regexp.MustCompile(`(?i)^\s*(UPDATE|DELETE)\s+`)
+	reNotNull          = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
+	reWordDefault      = regexp.MustCompile(`(?i)\bDEFAULT\b`)
+	reWordWhere        = regexp.MustCompile(`(?i)\bWHERE\b`)
 )
 
 // Classify evaluates the migration operations against deterministic risk heuristics.
@@ -160,7 +163,7 @@ func (h *HeuristicClassifier) Classify(ctx context.Context, input Classification
 			}
 
 		case "ADD_COLUMN":
-			if strings.Contains(upperSQL, "NOT NULL") && !strings.Contains(upperSQL, "DEFAULT") {
+			if reNotNull.MatchString(op.RawSQL) && !reWordDefault.MatchString(op.RawSQL) {
 				level = maxLevel(level, RiskHigh)
 				exclusiveLock = true
 				flags = append(flags, "ADD COLUMN NOT NULL without DEFAULT")
@@ -177,7 +180,7 @@ func (h *HeuristicClassifier) Classify(ctx context.Context, input Classification
 		case "GENERIC_DDL":
 			if reDataManipulation.MatchString(op.RawSQL) {
 				category = CategoryDataMigration
-				if !strings.Contains(upperSQL, "WHERE") {
+				if !reWordWhere.MatchString(op.RawSQL) {
 					level = maxLevel(level, RiskHigh)
 					destructive = true
 					flags = append(flags, "DML UPDATE/DELETE without WHERE clause")
@@ -201,7 +204,7 @@ func (h *HeuristicClassifier) Classify(ctx context.Context, input Classification
 			// Check for data migration DML
 			if reDataManipulation.MatchString(op.RawSQL) {
 				category = CategoryDataMigration
-				if !strings.Contains(upperSQL, "WHERE") {
+				if !reWordWhere.MatchString(op.RawSQL) {
 					level = maxLevel(level, RiskHigh)
 					destructive = true
 					flags = append(flags, "DML UPDATE/DELETE without WHERE clause")

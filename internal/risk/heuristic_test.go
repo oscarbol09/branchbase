@@ -110,3 +110,84 @@ func TestHeuristicClassifier(t *testing.T) {
 		}
 	})
 }
+
+func TestHeuristicClassifierUsesSQLKeywordBoundaries(t *testing.T) {
+	classifier := NewHeuristicClassifier()
+	ctx := context.Background()
+
+	t.Run("DEFAULT in a column name does not suppress NOT NULL warning", func(t *testing.T) {
+		sql := "ALTER TABLE accounts ADD COLUMN is_default BOOLEAN NOT NULL;"
+		risk, err := classifier.Classify(ctx, ClassificationInput{
+			File:   "add_is_default.sql",
+			SQL:    sql,
+			Engine: "postgres",
+			Operations: []DDLOperation{
+				{Type: "ADD_COLUMN", TargetTable: "accounts", TargetColumn: "is_default", RawSQL: sql},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if risk.Level != RiskHigh {
+			t.Errorf("expected HIGH for NOT NULL column without DEFAULT, got %v", risk.Level)
+		}
+	})
+
+	t.Run("DEFAULT keyword still suppresses NOT NULL warning", func(t *testing.T) {
+		sql := "ALTER TABLE accounts ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT false;"
+		risk, err := classifier.Classify(ctx, ClassificationInput{
+			File:   "add_enabled.sql",
+			SQL:    sql,
+			Engine: "postgres",
+			Operations: []DDLOperation{
+				{Type: "ADD_COLUMN", TargetTable: "accounts", TargetColumn: "enabled", RawSQL: sql},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if risk.Level != RiskLow {
+			t.Errorf("expected LOW when a DEFAULT is present, got %v", risk.Level)
+		}
+	})
+
+	for _, sql := range []string{
+		"UPDATE somewhere SET archived = true;",
+		"DELETE FROM somewhere;",
+	} {
+		t.Run(sql+" is recognized as unconditional", func(t *testing.T) {
+			risk, err := classifier.Classify(ctx, ClassificationInput{
+				File:   "unconditional_dml.sql",
+				SQL:    sql,
+				Engine: "postgres",
+				Operations: []DDLOperation{
+					{Type: "GENERIC_DDL", RawSQL: sql},
+				},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if risk.Level != RiskHigh || !risk.Destructive {
+				t.Errorf("expected HIGH and destructive for unconditional DML, got level %v, destructive %v", risk.Level, risk.Destructive)
+			}
+		})
+	}
+
+	t.Run("WHERE keyword still recognizes conditional DML", func(t *testing.T) {
+		sql := "UPDATE somewhere SET archived = true WHERE id = 1;"
+		risk, err := classifier.Classify(ctx, ClassificationInput{
+			File:   "conditional_dml.sql",
+			SQL:    sql,
+			Engine: "postgres",
+			Operations: []DDLOperation{
+				{Type: "GENERIC_DDL", RawSQL: sql},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if risk.Level != RiskMedium || risk.Destructive {
+			t.Errorf("expected MEDIUM and non-destructive for conditional DML, got level %v, destructive %v", risk.Level, risk.Destructive)
+		}
+	})
+}
