@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 )
 
@@ -34,15 +33,21 @@ var (
 	ErrInvalidDatabaseIdentifier = errors.New("pgwire: invalid characters in database name")
 )
 
-// validIdentifierRe matches standard PostgreSQL unquoted identifier syntax:
-// must start with an ASCII letter or underscore, followed by alphanumeric characters, underscores, or dollar signs.
-var validIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_$]*$`)
-
-// ValidateDatabaseIdentifier ensures a database name adheres to PostgreSQL wire and naming rules:
-// - Must not be empty
-// - Must not exceed 63 bytes (NAMEDATALEN - 1)
-// - Must not contain null bytes (\x00) which would truncate or corrupt packet framing
-// - Must match standard PostgreSQL unquoted identifier pattern (^[a-zA-Z_][a-zA-Z0-9_$]*$)
+// ValidateDatabaseIdentifier ensures a database name can travel in a PostgreSQL
+// StartupMessage unchanged:
+//   - Must not be empty
+//   - Must not exceed 63 bytes (NAMEDATALEN - 1)
+//   - Must not contain null bytes (\x00), which would truncate or corrupt the
+//     null-terminated packet framing
+//   - Must not contain control characters or path separators
+//
+// The 'database' parameter is an opaque, length-bounded UTF-8 string that the
+// server matches against pg_database.datname; it is not SQL text, so the
+// unquoted-identifier pattern that applies to SQL statements does not apply
+// here. Names such as "myapp-dev", "2024_app_dev" or "my app" are legal in
+// PostgreSQL and are accepted. Where BranchBase builds SQL from a database
+// name (CREATE DATABASE ... TEMPLATE ...) the name is quoted with
+// pq.QuoteIdentifier.
 func ValidateDatabaseIdentifier(name string) error {
 	if name == "" {
 		return ErrEmptyDatabaseName
@@ -53,8 +58,11 @@ func ValidateDatabaseIdentifier(name string) error {
 	if strings.ContainsRune(name, '\x00') {
 		return ErrDatabaseNameContainsNull
 	}
-	if !validIdentifierRe.MatchString(name) {
-		return fmt.Errorf("%w: %q", ErrInvalidDatabaseIdentifier, name)
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c < 32 || c == 127 || c == '/' || c == '\\' {
+			return fmt.Errorf("%w: contains invalid character %q", ErrInvalidDatabaseIdentifier, c)
+		}
 	}
 	return nil
 }

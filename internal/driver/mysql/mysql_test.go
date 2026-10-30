@@ -129,6 +129,43 @@ func TestMySQLBranchExists(t *testing.T) {
 	}
 }
 
+func TestMySQLFormatCharsetCollation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		charset     string
+		collation   string
+		wantCharset string
+		wantColl    string
+		wantOK      bool
+	}{
+		{"typical utf8mb4 pair", "utf8mb4", "utf8mb4_unicode_ci", "utf8mb4", "utf8mb4_unicode_ci", true},
+		{"latin1 pair", "latin1", "latin1_swedish_ci", "latin1", "latin1_swedish_ci", true},
+		{"empty charset", "", "utf8mb4_unicode_ci", "", "", false},
+		{"empty collation", "utf8mb4", "", "", "", false},
+		{"backtick injection", "utf8mb4`; DROP DATABASE x; --", "utf8mb4_unicode_ci", "", "", false},
+		{"space injection", "utf8mb4 COLLATE x", "utf8mb4_unicode_ci", "", "", false},
+		{"single quote injection", "utf8mb4'", "utf8mb4_unicode_ci", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotCharset, gotCollation, ok := FormatCharsetCollation(tt.charset, tt.collation)
+			if ok != tt.wantOK {
+				t.Fatalf("FormatCharsetCollation(%q, %q) ok = %v, want %v", tt.charset, tt.collation, ok, tt.wantOK)
+			}
+			if gotCharset != tt.wantCharset {
+				t.Errorf("charset = %q, want %q", gotCharset, tt.wantCharset)
+			}
+			if gotCollation != tt.wantColl {
+				t.Errorf("collation = %q, want %q", gotCollation, tt.wantColl)
+			}
+		})
+	}
+}
+
 func TestMySQLCreateBranch(t *testing.T) {
 	t.Parallel()
 	db, mock, err := sqlmock.New()
@@ -148,7 +185,7 @@ func TestMySQLCreateBranch(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"DEFAULT_CHARACTER_SET_NAME", "DEFAULT_COLLATION_NAME"}).AddRow("utf8mb4", "utf8mb4_unicode_ci"))
 
 	// Expect create database with charset
-	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE `myapp_dev_feature_b` CHARACTER SET `utf8mb4` COLLATE `utf8mb4_unicode_ci`;")).
+	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE `myapp_dev_feature_b` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectExec(regexp.QuoteMeta("SET FOREIGN_KEY_CHECKS=0")).
