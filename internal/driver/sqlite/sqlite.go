@@ -308,6 +308,12 @@ func (d *SqliteDriver) ListBranches(ctx context.Context) ([]driver.BranchInfo, e
 		}
 
 		name := entry.Name()
+		if strings.HasSuffix(name, ".branchbase-copying") {
+			reservedDB := strings.TrimSuffix(name, ".branchbase-copying")
+			if reservedDB == baseFile || (strings.HasPrefix(reservedDB, basePrefix+"_") && strings.HasSuffix(reservedDB, ext)) {
+				continue
+			}
+		}
 		if _, err := os.Stat(filepath.Join(dir, name+".branchbase-copying")); err == nil {
 			continue
 		}

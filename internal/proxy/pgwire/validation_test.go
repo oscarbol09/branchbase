@@ -69,29 +69,52 @@ func TestValidateDatabaseIdentifier(t *testing.T) {
 			wantErr:   ErrDatabaseNameContainsNull,
 			wantMatch: true,
 		},
+		// The startup 'database' field is an opaque string matched against
+		// pg_database.datname, so names PostgreSQL accepts but SQL would need
+		// to quote are accepted here (#138).
 		{
 			name:      "starts with digit",
-			dbName:    "1database",
-			wantErr:   ErrInvalidDatabaseIdentifier,
-			wantMatch: true,
+			dbName:    "2024_app_dev",
+			wantErr:   nil,
+			wantMatch: false,
 		},
 		{
 			name:      "contains hyphen",
 			dbName:    "myapp-dev",
-			wantErr:   ErrInvalidDatabaseIdentifier,
-			wantMatch: true,
+			wantErr:   nil,
+			wantMatch: false,
+		},
+		{
+			name:      "hyphenated branch database",
+			dbName:    "billing-service_dev",
+			wantErr:   nil,
+			wantMatch: false,
 		},
 		{
 			name:      "contains space",
 			dbName:    "my app",
-			wantErr:   ErrInvalidDatabaseIdentifier,
-			wantMatch: true,
+			wantErr:   nil,
+			wantMatch: false,
 		},
 		{
 			name:      "contains dot",
 			dbName:    "public.users",
-			wantErr:   ErrInvalidDatabaseIdentifier,
-			wantMatch: true,
+			wantErr:   nil,
+			wantMatch: false,
+		},
+		{
+			name:      "contains non-ASCII UTF-8",
+			dbName:    "veritabanı_dev",
+			wantErr:   nil,
+			wantMatch: false,
+		},
+		{
+			// Semicolons and quotes are ordinary bytes in this field: it is never
+			// concatenated into SQL, and the CREATE DATABASE path quotes the name.
+			name:      "SQL metacharacters are not special in the wire field",
+			dbName:    "myapp; DROP TABLE users;--",
+			wantErr:   nil,
+			wantMatch: false,
 		},
 		{
 			name:      "contains slash",
@@ -100,14 +123,20 @@ func TestValidateDatabaseIdentifier(t *testing.T) {
 			wantMatch: true,
 		},
 		{
-			name:      "SQL injection attempt with semicolon",
-			dbName:    "myapp; DROP TABLE users;--",
+			name:      "contains backslash",
+			dbName:    `path\to\db`,
 			wantErr:   ErrInvalidDatabaseIdentifier,
 			wantMatch: true,
 		},
 		{
-			name:      "SQL injection attempt with quotes",
-			dbName:    "myapp' OR '1'='1",
+			name:      "contains tab control character",
+			dbName:    "myapp\tdev",
+			wantErr:   ErrInvalidDatabaseIdentifier,
+			wantMatch: true,
+		},
+		{
+			name:      "contains delete control character",
+			dbName:    "myapp\x7fdev",
 			wantErr:   ErrInvalidDatabaseIdentifier,
 			wantMatch: true,
 		},
@@ -146,7 +175,7 @@ func TestRewriteDatabaseValidation(t *testing.T) {
 		{"empty", "", ErrEmptyDatabaseName},
 		{"too long", strings.Repeat("x", 64), ErrDatabaseNameTooLong},
 		{"null byte", "test\x00db", ErrDatabaseNameContainsNull},
-		{"invalid char", "test-db", ErrInvalidDatabaseIdentifier},
+		{"invalid char", "test/db", ErrInvalidDatabaseIdentifier},
 	}
 
 	for _, tt := range invalidNames {
@@ -161,5 +190,27 @@ func TestRewriteDatabaseValidation(t *testing.T) {
 				t.Fatalf("expected error to wrap %v, got %v", tt.wantErr, err)
 			}
 		})
+	}
+}
+
+// TestRewriteDatabaseAcceptsHyphenatedName is the regression test for #138: the
+// proxy rejected "myapp-dev_feature_x" because the name did not match the
+// unquoted SQL identifier pattern.
+func TestRewriteDatabaseAcceptsHyphenatedName(t *testing.T) {
+	t.Parallel()
+	pkt := buildMockStartupPacket("postgres", "app-dev")
+
+	const target = "myapp-dev_feature_x"
+	rewritten, err := RewriteDatabase(pkt, target)
+	if err != nil {
+		t.Fatalf("RewriteDatabase(%q) returned an error: %v", target, err)
+	}
+
+	msg, err := ParseStartupMessage(rewritten)
+	if err != nil {
+		t.Fatalf("unexpected error parsing rewritten packet: %v", err)
+	}
+	if got := msg.Parameters["database"]; got != target {
+		t.Errorf("expected database %q, got %q", target, got)
 	}
 }

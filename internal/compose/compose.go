@@ -176,7 +176,11 @@ func extractDatabaseService(comp *ComposeFile) *DatabaseService {
 			dbSvc.User = getFirstNonEmpty(envMap["POSTGRES_USER"], "postgres")
 			dbSvc.Password = envMap["POSTGRES_PASSWORD"]
 			dbSvc.Database = getFirstNonEmpty(envMap["POSTGRES_DB"], "myapp_dev")
-		case "mysql", "mariadb":
+		case "mariadb":
+			dbSvc.User = getFirstNonEmpty(envMap["MARIADB_USER"], envMap["MYSQL_USER"], "root")
+			dbSvc.Password = getFirstNonEmpty(envMap["MARIADB_PASSWORD"], envMap["MYSQL_PASSWORD"], envMap["MARIADB_ROOT_PASSWORD"], envMap["MYSQL_ROOT_PASSWORD"])
+			dbSvc.Database = getFirstNonEmpty(envMap["MARIADB_DATABASE"], envMap["MYSQL_DATABASE"], "myapp_dev")
+		case "mysql":
 			dbSvc.User = getFirstNonEmpty(envMap["MYSQL_USER"], "root")
 			dbSvc.Password = getFirstNonEmpty(envMap["MYSQL_PASSWORD"], envMap["MYSQL_ROOT_PASSWORD"])
 			dbSvc.Database = getFirstNonEmpty(envMap["MYSQL_DATABASE"], "myapp_dev")

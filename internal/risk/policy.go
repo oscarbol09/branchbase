@@ -116,10 +116,10 @@ func (p *RiskPolicy) IsPathExcluded(filePath string) bool {
 	cleanPath := filepath.ToSlash(filePath)
 	for _, pattern := range p.ExcludePaths {
 		cleanPattern := filepath.ToSlash(pattern)
-		// Match exact prefix for glob trailing **
+		// A trailing ** matches the directory and descendants, not sibling names.
 		if strings.HasSuffix(cleanPattern, "/**") {
 			prefix := strings.TrimSuffix(cleanPattern, "/**")
-			if strings.HasPrefix(cleanPath, prefix) {
+			if cleanPath == prefix || strings.HasPrefix(cleanPath, prefix+"/") {
 				return true
 			}
 		}

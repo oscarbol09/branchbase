@@ -46,6 +46,27 @@ func QuoteIdentifier(name string) string {
 	return "`" + escaped + "`"
 }
 
+// charsetCollationPattern matches the character set and collation names that
+// MySQL and MariaDB report through information_schema.
+var charsetCollationPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// FormatCharsetCollation validates the character set and collation names read
+// from information_schema and returns them in the form the CREATE DATABASE
+// syntax expects.
+//
+// CHARACTER SET and COLLATE values are not identifiers: MySQL rejects them when
+// they are wrapped in backticks, which makes the CREATE DATABASE call fail with
+// a syntax error and silently falls back to the server default character set.
+// The names are therefore returned unquoted, but only after they have been
+// restricted to the characters MySQL itself allows, so a hostile value can
+// never reach the statement.
+func FormatCharsetCollation(charset, collation string) (string, string, bool) {
+	if !charsetCollationPattern.MatchString(charset) || !charsetCollationPattern.MatchString(collation) {
+		return "", "", false
+	}
+	return charset, collation, true
+}
+
 // DSN returns the MySQL Data Source Name connection string
 func (c Config) DSN() string {
 	host := c.Host
@@ -205,8 +226,8 @@ func (d *MySQLDriver) CreateBranch(ctx context.Context, sourceBranch, targetBran
 	_ = d.db.QueryRowContext(ctx, schemaInfoQuery, sourceDB).Scan(&charset, &collation)
 
 	createDBSQL := fmt.Sprintf("CREATE DATABASE %s;", QuoteIdentifier(targetDB))
-	if charset != "" && collation != "" {
-		createDBSQL = fmt.Sprintf("CREATE DATABASE %s CHARACTER SET %s COLLATE %s;", QuoteIdentifier(targetDB), QuoteIdentifier(charset), QuoteIdentifier(collation))
+	if cs, coll, ok := FormatCharsetCollation(charset, collation); ok {
+		createDBSQL = fmt.Sprintf("CREATE DATABASE %s CHARACTER SET %s COLLATE %s;", QuoteIdentifier(targetDB), cs, coll)
 	}
 
 	if _, err := d.db.ExecContext(ctx, createDBSQL); err != nil {

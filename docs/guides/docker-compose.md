@@ -15,7 +15,7 @@ When you run `branchbase init`, BranchBase scans for:
 It automatically extracts:
 - **Database service engine:** PostgreSQL (`postgres:16`), MySQL (`mysql:8`), MariaDB (`mariadb:11`).
 - **Host port mappings:** e.g., `5433:5432` or `3307:3306`.
-- **Environment credentials:** `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MYSQL_DATABASE`, etc.
+- **Environment credentials:** `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MYSQL_DATABASE`, etc. The MariaDB 10.6+ variables `MARIADB_DATABASE`, `MARIADB_USER`, `MARIADB_PASSWORD`, and `MARIADB_ROOT_PASSWORD` are supported, with the corresponding `MYSQL_*` names retained as fallbacks.
 
 ---
 

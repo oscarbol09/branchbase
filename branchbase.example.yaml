@@ -9,6 +9,8 @@ version: "1"
 driver: "postgres"
 
 # Target underlying database configuration (e.g. your local Docker container)
+# Compose auto-detection supports MARIADB_USER, MARIADB_PASSWORD, MARIADB_ROOT_PASSWORD,
+# and MARIADB_DATABASE for MariaDB 10.6+, with MYSQL_* aliases retained as fallbacks.
 connection:
   host: "${DB_HOST:-127.0.0.1}"
   port: 5433             # Real database port where Docker exposes the engine

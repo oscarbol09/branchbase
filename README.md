@@ -94,6 +94,11 @@ BranchBase pairs automated Git branch transitions with database cloning mechanis
 | `branchbase prune [--dry-run] [--force]` | Reconcile merged/orphaned branches and safely delete corresponding databases |
 | `branchbase version` | Print the current BranchBase version, author, and repository URL |
 
+Risk policy `exclude_paths` patterns ending in `/**` exclude that directory and
+its descendants. For example, `migrations/seeds/**` excludes
+`migrations/seeds/users/001.sql`, but not `migrations/seeds_archive/001.sql` or
+`migrations/seeds.sql`; those paths still undergo risk assessment.
+
 ---
 
 ## Repository Structure
@@ -150,7 +155,7 @@ branchbase/
    * **MySQL / MariaDB:** Copies schemas and rows table by table (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`); concurrent writes to the source are not captured from a single transaction snapshot.
    * **MongoDB:** Uses the $out aggregation pipeline to clone collections and reconstructs indexes.
    * **SQLite:** Performs a filesystem reflink/clone (`clonefile()` or `FICLONE`) only when the source has no active WAL/SHM/journal sidecars; otherwise it refuses the snapshot until clients stop and the database is checkpointed.
-   * **Docker Compose:** Automatically inspects `docker-compose.yml` to configure database ports and credentials without manual input.
+   * **Docker Compose:** Automatically inspects `docker-compose.yml` to configure database ports and credentials without manual input. For MariaDB 10.6+ images, `MARIADB_*` variables take precedence over their legacy `MYSQL_*` aliases.
 4. **Transparent Routing:** When your backend app queries `localhost:5432`, the BranchBase proxy intercepts the connection, resolves the active branch database, and forwards traffic directly with sub-millisecond overhead.
 5. **Lifecycle Pruning:** Once a PR is merged into `main`, running `branchbase prune` removes the ephemeral database, freeing disk space.
 
@@ -162,7 +167,7 @@ branchbase/
 - **MySQL Wire SSL:** When the transparent MySQL proxy runs in cleartext mode, incoming client connections requesting TLS (`ClientSSL`) fail closed with MySQL error code `2061`. Applications using MySQL through the proxy must configure SSL as disabled or optional in local development.
 - **PostgreSQL Connection Locking:** PostgreSQL's `CREATE DATABASE ... TEMPLATE` fails with SQLSTATE `55006` if active connections remain open on the template. BranchBase terminates idle connections via `pg_terminate_backend()` prior to cloning; long-running active transactions on the source database can still cause cloning to wait or fail.
 - **MySQL Data Cloning Performance:** MySQL lacks native copy-on-write database cloning. BranchBase replicates schemas and data table by table (`CREATE TABLE ... LIKE`, `INSERT INTO ... SELECT`). Large seed datasets (e.g. hundreds of megabytes or millions of rows) will take seconds to clone rather than milliseconds.
-- **SQLite Filesystem Reflink:** Fast Copy-on-Write snapshots depend on filesystem support (`clonefile` on APFS, `FICLONE` on Btrfs/XFS). On ext4 without reflink, NTFS, or FAT32, BranchBase falls back to chunked file copying. Additionally, active WAL sidecars (`-wal`, `-shm`) require checkpointing (`PRAGMA wal_checkpoint(TRUNCATE)`) before safe snapshots.
+- **SQLite Filesystem Reflink:** Fast Copy-on-Write snapshots depend on filesystem support (`clonefile` on APFS, `FICLONE` on Btrfs/XFS). On ext4 without reflink, NTFS, or FAT32, BranchBase falls back to chunked file copying. Additionally, active WAL sidecars (`-wal`, `-shm`) require checkpointing (`PRAGMA wal_checkpoint(TRUNCATE)`) before safe snapshots. Temporary copy reservations are omitted from `branchbase list`, including when database filenames have no extension.
 - **MongoDB Collection Cloning:** MongoDB cloning uses `$out` aggregation pipelines across collections and reconstructs indexes. Capped collections and time-series collections require standard collection semantics.
 
 ---
