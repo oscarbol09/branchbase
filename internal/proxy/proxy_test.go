@@ -16,6 +16,7 @@ import (
 	"github.com/branchbase/branchbase/internal/config"
 	"github.com/branchbase/branchbase/internal/driver"
 	"github.com/branchbase/branchbase/internal/proxy/mysqlwire"
+	"github.com/branchbase/branchbase/internal/proxy/pgwire"
 )
 
 type mockDriver struct {
@@ -34,9 +35,9 @@ func newMockDriver() *mockDriver {
 	}
 }
 
-func (m *mockDriver) Name() string { return "mock" }
+func (m *mockDriver) Name() string                   { return "mock" }
 func (m *mockDriver) Ping(ctx context.Context) error { return nil }
-func (m *mockDriver) Close() error { return nil }
+func (m *mockDriver) Close() error                   { return nil }
 
 func (m *mockDriver) BranchExists(ctx context.Context, branchName string) (bool, error) {
 	m.mu.Lock()
@@ -922,4 +923,201 @@ func TestProxy_FailClosedOnGitResolutionFailure(t *testing.T) {
 	}
 }
 
+func TestProxyHandleConnection_GSSENCRequest(t *testing.T) {
+	// Test GSSENCRequest followed by a direct startup or SSL negotiation
+	tests := []struct {
+		name    string
+		withSSL bool
+	}{
+		{
+			name:    "GSS then Startup",
+			withSSL: false,
+		},
+		{
+			name:    "GSS then SSL then Startup",
+			withSSL: true,
+		},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 1. Set up a mock PostgreSQL backend listener
+			backendListener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("failed to create mock backend: %v", err)
+			}
+			defer backendListener.Close()
+
+			received := make(chan []byte, 1)
+			backendErrors := make(chan error, 1)
+
+			go func() {
+				conn, err := backendListener.Accept()
+				if err != nil {
+					backendErrors <- err
+					return
+				}
+				defer conn.Close()
+
+				_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+
+				packet, err := pgwire.ReadStartupPacket(conn)
+				if err != nil {
+					backendErrors <- err
+					return
+				}
+
+				received <- packet
+			}()
+
+			// 2. Configure and start the BranchBase proxy
+			cfg := config.DefaultConfig()
+			cfg.Driver = "postgres"
+			cfg.Proxy.ListenPort = 0
+			cfg.Proxy.TLS.Enabled = false
+			cfg.Connection.Host = "127.0.0.1"
+			cfg.Connection.Port = backendListener.Addr().(*net.TCPAddr).Port
+			cfg.Connection.BaseDatabase = "myapp_dev"
+
+			srv := NewServer(&cfg, createFakeGitRepo(t, "main"), nil)
+
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+			defer cancel()
+
+			if err := srv.Start(ctx); err != nil {
+				t.Fatalf("failed to start proxy: %v", err)
+			}
+			defer func() { _ = srv.Stop() }()
+
+			// 3. Connect a PostgreSQL client to the proxy
+			clientConn, err := net.DialTimeout(
+				"tcp",
+				listenerAddr(srv),
+				2*time.Second,
+			)
+			if err != nil {
+				t.Fatalf("failed to connect to proxy: %v", err)
+			}
+			defer clientConn.Close()
+
+			_ = clientConn.SetDeadline(time.Now().Add(3 * time.Second))
+
+			// 4. Send GSSENCRequest to initiate encryption negotiation
+			gssPkt := make([]byte, 8)
+			binary.BigEndian.PutUint32(gssPkt[0:4], 8)
+			binary.BigEndian.PutUint32(gssPkt[4:8], pgwire.GSSENCRequestCode)
+
+			if _, err := clientConn.Write(gssPkt); err != nil {
+				t.Fatalf("failed to send GSSENCRequest: %v", err)
+			}
+
+			// 5. Verify the proxy declines GSSAPI encryption with 'N'
+			var response [1]byte
+			if _, err := io.ReadFull(clientConn, response[:]); err != nil {
+				t.Fatalf("failed to read GSS response: %v", err)
+			}
+
+			if response[0] != 'N' {
+				t.Fatalf("expected GSS response 'N', got %q", response[0])
+			}
+
+			if tt.withSSL {
+				// 6. Verify SSL negotiation still works after GSSENCRequest
+				sslPkt := make([]byte, 8)
+				binary.BigEndian.PutUint32(sslPkt[0:4], 8)
+				binary.BigEndian.PutUint32(sslPkt[4:8], pgwire.SSLRequestCode)
+
+				if _, err := clientConn.Write(sslPkt); err != nil {
+					t.Fatalf("failed to send SSLRequest: %v", err)
+				}
+
+				if _, err := io.ReadFull(clientConn, response[:]); err != nil {
+					t.Fatalf("failed to read SSL response: %v", err)
+				}
+
+				if response[0] != 'N' {
+					t.Fatalf("expected SSL response 'N', got %q", response[0])
+				}
+			}
+
+			// 7. Send a valid PostgreSQL StartupMessage
+			var startup bytes.Buffer
+			startup.Write([]byte{0, 0, 0, 0})
+
+			var proto [4]byte
+			binary.BigEndian.PutUint32(
+				proto[:],
+				pgwire.ProtocolVersion3,
+			)
+			startup.Write(proto[:])
+
+			startup.WriteString("user")
+			startup.WriteByte(0)
+			startup.WriteString("postgres")
+			startup.WriteByte(0)
+
+			startup.WriteString("database")
+			startup.WriteByte(0)
+			startup.WriteString("original_db")
+			startup.WriteByte(0)
+			startup.WriteByte(0)
+
+			startupPkt := startup.Bytes()
+			binary.BigEndian.PutUint32(
+				startupPkt[0:4],
+				uint32(len(startupPkt)),
+			)
+
+			if _, err := clientConn.Write(startupPkt); err != nil {
+				t.Fatalf("failed to send StartupMessage: %v", err)
+			}
+
+			// 8. Verify the backend receives the rewritten StartupMessage
+			select {
+			case packet := <-received:
+				if pgwire.IsGSSENCRequest(packet) {
+					t.Fatal("backend received GSSENCRequest")
+				}
+				if pgwire.IsSSLRequest(packet) {
+					t.Fatal("backend received SSLRequest")
+				}
+
+				msg, err := pgwire.ParseStartupMessage(packet)
+				if err != nil {
+					t.Fatalf("failed to parse backend startup packet: %v", err)
+				}
+
+				if msg.ProtocolVersion != pgwire.ProtocolVersion3 {
+					t.Errorf(
+						"expected protocol version %d, got %d",
+						pgwire.ProtocolVersion3,
+						msg.ProtocolVersion,
+					)
+				}
+
+				if msg.Parameters["user"] != "postgres" {
+					t.Errorf(
+						"expected user postgres, got %q",
+						msg.Parameters["user"],
+					)
+				}
+
+				if msg.Parameters["database"] != "myapp_dev" {
+					t.Errorf(
+						"expected rewritten database myapp_dev, got %q",
+						msg.Parameters["database"],
+					)
+				}
+
+			case err := <-backendErrors:
+				t.Fatalf("mock backend failed: %v", err)
+
+			case <-time.After(4 * time.Second):
+				t.Fatal("timed out waiting for backend startup packet")
+			}
+		})
+	}
+}

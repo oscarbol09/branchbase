@@ -52,6 +52,44 @@ func TestIsSSLRequest(t *testing.T) {
 	}
 }
 
+func TestIsGSSENCRequest(t *testing.T) {
+	t.Parallel()
+
+	// Verify that a valid GSSENCRequest packet is recognized.
+	var gssPkt [8]byte
+	binary.BigEndian.PutUint32(gssPkt[0:4], 8)
+	binary.BigEndian.PutUint32(gssPkt[4:8], GSSENCRequestCode)
+
+	if !IsGSSENCRequest(gssPkt[:]) {
+		t.Errorf("expected IsGSSENCRequest to return true for valid GSSENC packet")
+	}
+
+	// Wrong request code
+	var wrongCode [8]byte
+	binary.BigEndian.PutUint32(wrongCode[0:4], 8)
+	binary.BigEndian.PutUint32(wrongCode[4:8], SSLRequestCode)
+
+	if IsGSSENCRequest(wrongCode[:]) {
+		t.Errorf("expected IsGSSENCRequest to return false for SSL packet")
+	}
+
+	// Short packet
+	shortPkt := []byte{0, 0, 8}
+
+	if IsGSSENCRequest(shortPkt) {
+		t.Errorf("expected IsGSSENCRequest to return false for short packet")
+	}
+
+	// Incorrect packet length
+	var wrongLength [8]byte
+	binary.BigEndian.PutUint32(wrongLength[0:4], 12)
+	binary.BigEndian.PutUint32(wrongLength[4:8], 80877104)
+
+	if IsGSSENCRequest(wrongLength[:]) {
+		t.Errorf("expected IsGSSENCRequest to return false for incorrect packet length")
+	}
+}
+
 func TestParseStartupMessage(t *testing.T) {
 	t.Parallel()
 	pkt := buildMockStartupPacket("postgres", "myapp_dev")

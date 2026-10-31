@@ -12,6 +12,8 @@ import (
 const (
 	// SSLRequestCode is the special protocol version indicating an SSL handshake request
 	SSLRequestCode = 80877103 // 1234.5679 in hex (0x04D2162F)
+	// GSSENCRequestCode is the special protocol code for GSSAPI encryption negotiation
+	GSSENCRequestCode = 80877104 // 1234.5680 in hex (0x04D21630)
 	// CancelRequestCode is the special protocol code for cancelling a running query
 	CancelRequestCode = 80877102 // 1234.5678 in hex (0x04D2162E)
 	// ProtocolVersion3 is the PostgreSQL 3.0 protocol version number
@@ -81,6 +83,16 @@ func IsSSLRequest(header []byte) bool {
 	length := binary.BigEndian.Uint32(header[0:4])
 	code := binary.BigEndian.Uint32(header[4:8])
 	return length == 8 && code == SSLRequestCode
+}
+
+// IsGSSENCRequest checks whether the initial 8 bytes represent a GSSAPI encryption negotiation request
+func IsGSSENCRequest(header []byte) bool {
+	if len(header) < 8 {
+		return false
+	}
+	length := binary.BigEndian.Uint32(header[0:4])
+	code := binary.BigEndian.Uint32(header[4:8])
+	return length == 8 && code == GSSENCRequestCode
 }
 
 // ReadStartupPacket reads and returns the raw startup packet from the reader
@@ -220,8 +232,6 @@ func BuildErrorResponse(severity, code, message string) []byte {
 	return result
 }
 
-
-
 // IsCancelRequest returns true if the packet matches a PostgreSQL CancelRequest message.
 // CancelRequest packets are exactly 16 bytes: Int32(16) + Int32(80877102) + Int32(PID) + Int32(SecretKey).
 func IsCancelRequest(packet []byte) bool {
@@ -232,4 +242,3 @@ func IsCancelRequest(packet []byte) bool {
 	code := binary.BigEndian.Uint32(packet[4:8])
 	return length == 16 && code == CancelRequestCode
 }
-
