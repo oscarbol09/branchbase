@@ -244,7 +244,28 @@ func ResolveMergedBranchesContext(ctx context.Context, repoPath, defaultBranch s
 		defaultBranch = "main"
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "branch", "--merged", defaultBranch)
+	mergeRef := ""
+	for _, candidate := range []struct {
+		name string
+		ref  string
+	}{
+		{defaultBranch, "refs/heads/" + defaultBranch},
+		{"origin/" + defaultBranch, "refs/remotes/origin/" + defaultBranch},
+	} {
+		cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "rev-parse", "--verify", "--quiet", candidate.ref+"^{commit}")
+		if cmd.Run() == nil {
+			mergeRef = candidate.name
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	if mergeRef == "" {
+		return nil, fmt.Errorf("cannot resolve default branch %q locally or as origin/%s", defaultBranch, defaultBranch)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "branch", "--merged", mergeRef)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query merged branches for %s: %w", defaultBranch, err)
