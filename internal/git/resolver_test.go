@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -388,6 +389,69 @@ func TestResolveLocalBranchesContext_Cancellation(t *testing.T) {
 	_, _ = ResolveLocalBranchesContext(ctx, tempDir)
 }
 
+func TestResolveMergedBranchesRemoteTrackingFallback(t *testing.T) {
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-b", "feature/merged")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial")
+	git("branch", "feature/unmerged")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	git("switch", "feature/unmerged")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "unmerged")
+	git("switch", "feature/merged")
+
+	got, err := ResolveMergedBranches(repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "feature/merged" {
+		t.Fatalf("merged branches = %v, want only feature/merged", got)
+	}
+}
+
+func TestResolveMergedBranchesPrefersLocalDefault(t *testing.T) {
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-b", "main")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial")
+	git("branch", "feature/merged")
+	git("switch", "-c", "feature/unmerged")
+	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "remote-ahead")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	git("switch", "feature/merged")
+
+	got, err := ResolveMergedBranches(repo, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "feature/merged" {
+		t.Fatalf("merged branches = %v, want only feature/merged", got)
+	}
+}
+
+func TestResolveMergedBranchesMissingDefault(t *testing.T) {
+	repo := t.TempDir()
+	cmd := exec.Command("git", "-C", repo, "init", "-b", "feature/only")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if _, err := ResolveMergedBranches(repo, "main"); err == nil {
+		t.Fatal("expected error when neither main nor origin/main exists")
+	}
+}
+
 func TestResolveMergedBranchesContext_Cancellation(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -397,4 +461,3 @@ func TestResolveMergedBranchesContext_Cancellation(t *testing.T) {
 
 	_, _ = ResolveMergedBranchesContext(ctx, tempDir, "main")
 }
-
