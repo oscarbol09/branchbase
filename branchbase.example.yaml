@@ -26,6 +26,7 @@ proxy:
   listen_host: "127.0.0.1" # Keep local by default; set deliberately to expose on another interface
   listen_port: 5432      # Port your application connects to in DATABASE_URL
   default_branch: "main" # Fallback branch if Git state is detached or unresolvable
+  # An explicitly empty default_branch maps main, master, and default to base_database.
 
 # Lifecycle and branch snapshot strategy
 strategy:
