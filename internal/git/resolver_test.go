@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,131 @@ func FuzzSanitizeBranchName(f *testing.F) {
 			t.Errorf("SanitizeBranchName(%q) returned empty string", input)
 		}
 	})
+}
+
+func TestResolveRepositoryRoot(t *testing.T) {
+	t.Parallel()
+
+	mkdirAll := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatalf("failed to create %s: %v", path, err)
+		}
+	}
+
+	tests := []struct {
+		name string
+		// setup builds the folder layout under root and returns the startDir.
+		setup func(t *testing.T, root string) (startDir string)
+		// wantRel is the expected result relative to root ("" means root itself).
+		wantRel string
+		wantErr error
+	}{
+		{
+			name: "from repo root",
+			setup: func(t *testing.T, root string) string {
+				mkdirAll(t, filepath.Join(root, ".git"))
+				return root
+			},
+		},
+		{
+			name: "from src subdirectory",
+			setup: func(t *testing.T, root string) string {
+				mkdirAll(t, filepath.Join(root, ".git"))
+				src := filepath.Join(root, "src")
+				mkdirAll(t, src)
+				return src
+			},
+		},
+		{
+			name: "from deeply nested subdirectory",
+			setup: func(t *testing.T, root string) string {
+				mkdirAll(t, filepath.Join(root, ".git"))
+				deep := filepath.Join(root, "a", "b", "c")
+				mkdirAll(t, deep)
+				return deep
+			},
+		},
+		{
+			name: "dot git file for worktree",
+			setup: func(t *testing.T, root string) string {
+				gitFile := filepath.Join(root, ".git")
+				if err := os.WriteFile(gitFile, []byte("gitdir: /somewhere/else/.git/worktrees/wt\n"), 0644); err != nil {
+					t.Fatalf("failed to write .git file: %v", err)
+				}
+				sub := filepath.Join(root, "pkg")
+				mkdirAll(t, sub)
+				return sub
+			},
+		},
+		{
+			name: "nested repo returns inner root",
+			setup: func(t *testing.T, root string) string {
+				mkdirAll(t, filepath.Join(root, ".git"))
+				mkdirAll(t, filepath.Join(root, "inner", ".git"))
+				start := filepath.Join(root, "inner", "src")
+				mkdirAll(t, start)
+				return start
+			},
+			wantRel: "inner",
+		},
+		{
+			name: "relative startDir returns absolute path",
+			setup: func(t *testing.T, root string) string {
+				mkdirAll(t, filepath.Join(root, ".git"))
+				src := filepath.Join(root, "src")
+				mkdirAll(t, src)
+				cwd, err := os.Getwd()
+				if err != nil {
+					t.Fatalf("failed to get cwd: %v", err)
+				}
+				rel, err := filepath.Rel(cwd, src)
+				if err != nil {
+					t.Fatalf("failed to compute relative path: %v", err)
+				}
+				if filepath.IsAbs(rel) {
+					t.Fatalf("expected relative path, got %q", rel)
+				}
+				return rel
+			},
+		},
+		{
+			name: "no git directory anywhere",
+			setup: func(t *testing.T, root string) string {
+				start := filepath.Join(root, "x", "y")
+				mkdirAll(t, start)
+				return start
+			},
+			wantErr: ErrNotAGitRepo,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			startDir := tt.setup(t, root)
+
+			got, err := ResolveRepositoryRoot(startDir)
+			if tt.wantErr != nil {
+				if err == nil && !strings.HasPrefix(got, root) {
+					t.Skipf("an ancestor of the temp dir is a git repo (%s); cannot test the not-found case here", got)
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("ResolveRepositoryRoot(%q) error = %v; want %v", startDir, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveRepositoryRoot(%q) unexpected error: %v", startDir, err)
+			}
+
+			want := filepath.Join(root, tt.wantRel)
+			if got != want {
+				t.Errorf("ResolveRepositoryRoot(%q) = %q; want %q", startDir, got, want)
+			}
+		})
+	}
 }
 
 func TestResolveCurrentBranch(t *testing.T) {
