@@ -34,6 +34,13 @@ func TestDatabaseNameForBranch(t *testing.T) {
 		{name: "slash default matches sanitized", defaultB: "release/v1", branch: "release_v1", expected: "myapp_dev"},
 		{name: "slash default other branch", defaultB: "release/v1", branch: "feature_x", expected: "myapp_dev_feature_x"},
 		{name: "hyphen default matches sanitized", defaultB: "master-staging", branch: "master_staging", expected: "myapp_dev"},
+		{name: "unset default main", defaultB: "", branch: "main", expected: "myapp_dev"},
+		{name: "unset default master", defaultB: "", branch: "master", expected: "myapp_dev"},
+		{name: "unset default default", defaultB: "", branch: "default", expected: "myapp_dev"},
+		{name: "unset default empty branch", defaultB: "", branch: "", expected: "myapp_dev"},
+		{name: "unset default feature", defaultB: "", branch: "feature_billing", expected: "myapp_dev_feature_billing"},
+		{name: "whitespace default main", defaultB: " \t ", branch: "main", expected: "myapp_dev"},
+		{name: "whitespace custom default", defaultB: " release/v1 ", branch: "release_v1", expected: "myapp_dev"},
 	}
 
 	for _, tt := range tests {
@@ -45,6 +52,39 @@ func TestDatabaseNameForBranch(t *testing.T) {
 			got := cfg.DatabaseNameForBranch(tt.branch)
 			if got != tt.expected {
 				t.Errorf("DatabaseNameForBranch(%q) with DefaultBranch %q = %q; want %q", tt.branch, tt.defaultB, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestLoadConfigDefaultBranchMapping(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		proxy  string
+		branch string
+		want   string
+	}{
+		{name: "explicit empty main", proxy: "proxy:\n  default_branch: \"\"\n", branch: "main", want: "myapp_dev"},
+		{name: "explicit empty master", proxy: "proxy:\n  default_branch: \"\"\n", branch: "master", want: "myapp_dev"},
+		{name: "omitted default remains main", proxy: "", branch: "main", want: "myapp_dev"},
+		{name: "omitted default does not include master", proxy: "", branch: "master", want: "myapp_dev_master"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			path := filepath.Join(dir, ".branchbase.yaml")
+			content := "connection:\n  base_database: myapp_dev\n" + tt.proxy
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := LoadConfig(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.DatabaseNameForBranch(tt.branch); got != tt.want {
+				t.Fatalf("branch %q resolved to %q, want %q", tt.branch, got, tt.want)
 			}
 		})
 	}
@@ -317,4 +357,3 @@ func TestSaveJSONPermissions(t *testing.T) {
 		}
 	}
 }
-

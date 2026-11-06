@@ -170,7 +170,15 @@ func (c *Config) SaveJSON(filePath string) error {
 // DefaultBranch is compared after the same sanitization so names like "release/v1"
 // match "release_v1" and resolve to the base database.
 func (c *Config) DatabaseNameForBranch(sanitizedBranch string) string {
-	if sanitizedBranch == "" || sanitizedBranch == git.SanitizeBranchName(c.Proxy.DefaultBranch) {
+	if sanitizedBranch == "" {
+		return c.Connection.BaseDatabase
+	}
+	defaultBranch := strings.TrimSpace(c.Proxy.DefaultBranch)
+	if defaultBranch == "" {
+		if sanitizedBranch == "main" || sanitizedBranch == "master" || sanitizedBranch == "default" {
+			return c.Connection.BaseDatabase
+		}
+	} else if sanitizedBranch == git.SanitizeBranchName(defaultBranch) {
 		return c.Connection.BaseDatabase
 	}
 	return c.Connection.BaseDatabase + "_" + sanitizedBranch

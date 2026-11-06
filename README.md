@@ -96,6 +96,8 @@ BranchBase pairs automated Git branch transitions with database cloning mechanis
 
 `prune` checks the local default branch first, then `origin/<default-branch>` if the local ref is absent (for example in CI and worktrees).
 
+If `proxy.default_branch` is explicitly empty, `main`, `master`, and `default` all map to `connection.base_database`; other branches use a suffixed database name. Set `default_branch` explicitly for a custom base branch.
+
 Risk policy `exclude_paths` patterns ending in `/**` exclude that directory and
 its descendants. For example, `migrations/seeds/**` excludes
 `migrations/seeds/users/001.sql`, but not `migrations/seeds_archive/001.sql` or
