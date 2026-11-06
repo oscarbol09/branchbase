@@ -19,6 +19,26 @@ var (
 	multipleUnderscore = regexp.MustCompile(`_+`)
 )
 
+// ResolveRepositoryRoot walks up from startDir to the nearest directory
+// containing a .git directory or file, and returns its absolute path.
+func ResolveRepositoryRoot(startDir string) (string, error) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path of %q: %w", startDir, err)
+	}
+	for {
+		// Stat succeeds for both a .git directory and a .git file (worktrees).
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", ErrNotAGitRepo
+		}
+		dir = parent
+	}
+}
+
 // ResolveCurrentBranch inspects .git/HEAD in the specified repository path
 // and returns the active branch name.
 func ResolveCurrentBranch(repoPath string) (string, error) {

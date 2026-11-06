@@ -30,7 +30,13 @@ func runRisk(cwd string, args []string) {
 			fmt.Println("Usage: branchbase risk analyze <migration.sql> [--json] [--offline] [--github]")
 			os.Exit(2)
 		}
-		filePath := args[1]
+		// cwd here is the repo root; filepath.Abs resolves against the process
+		// working directory, i.e. the folder the user ran the command in.
+		filePath, err := filepath.Abs(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resolving migration path %q: %v\n", args[1], err)
+			os.Exit(2)
+		}
 		jsonOutput := false
 		githubOutput := false
 		offline := false
@@ -55,7 +61,12 @@ func runRisk(cwd string, args []string) {
 			switch args[i] {
 			case "--policy":
 				if i+1 < len(args) {
-					policyPath = args[i+1]
+					abs, err := filepath.Abs(args[i+1])
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error resolving --policy path %q: %v\n", args[i+1], err)
+						os.Exit(2)
+					}
+					policyPath = abs
 					i++
 				}
 			case "--branch":
@@ -196,9 +207,18 @@ func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bo
 		fullPath = filepath.Join(cwd, targetFile)
 	}
 
+	// Report the file relative to the repo root when it lives inside the repo:
+	// GitHub only attaches ::error file=... annotations to repo-relative paths,
+	// and it keeps JSON/terminal output free of machine-specific prefixes.
+	displayPath := targetFile
+	if rel, err := filepath.Rel(cwd, fullPath); err == nil &&
+		rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		displayPath = filepath.ToSlash(rel)
+	}
+
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading migration file %s: %v\n", targetFile, err)
+		fmt.Fprintf(os.Stderr, "Error reading migration file %s: %v\n", displayPath, err)
 		os.Exit(2)
 	}
 
@@ -229,7 +249,7 @@ func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bo
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	riskResult, err := analyzer.AnalyzeSQL(ctx, targetFile, string(content))
+	riskResult, err := analyzer.AnalyzeSQL(ctx, displayPath, string(content))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Risk analysis failed: %v\n", err)
 		os.Exit(3)

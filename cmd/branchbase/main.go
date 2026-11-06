@@ -126,9 +126,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Use the repository root as the repo path for every command, so they work
+	// from any subdirectory. Outside a repo, fall back to cwd so existing behaviour
+	// (e.g. "not a git repository" errors, init in a fresh folder) is unchanged.
+	repoRoot := cwd
+	if root, err := git.ResolveRepositoryRoot(cwd); err == nil {
+		repoRoot = root
+	}
+
+	// Pin a relative --config to the directory the user typed it in, not the repo root.
+	if customConfig != "" {
+		absConfig, err := filepath.Abs(customConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resolving --config path %q: %v\n", customConfig, err)
+			os.Exit(1)
+		}
+		customConfig = absConfig
+	}
+
 	switch command {
 	case "doctor":
-		runDoctor(cwd, customConfig)
+		runDoctor(repoRoot, customConfig)
 
 	case "version", "-v", "--version":
 		fmt.Printf("BranchBase v%s 🌿\n", Version)
@@ -145,7 +163,7 @@ func main() {
 				skipHooks = true
 			}
 		}
-		if err := runInit(cwd, skipHooks); err != nil {
+		if err := runInit(repoRoot, skipHooks); err != nil {
 			os.Exit(1)
 		}
 
@@ -156,10 +174,10 @@ func main() {
 				jsonOutput = true
 			}
 		}
-		runStatus(cwd, jsonOutput, customConfig)
+		runStatus(repoRoot, jsonOutput, customConfig)
 
 	case "proxy":
-		runProxy(cwd, customConfig)
+		runProxy(repoRoot, customConfig)
 
 	case "switch":
 		if len(cmdArgs) < 1 {
@@ -179,7 +197,7 @@ func main() {
 			fmt.Println("Usage: branchbase switch <branch-name> [--no-create]")
 			os.Exit(1)
 		}
-		runSwitch(cwd, targetBranch, noCreate, customConfig)
+		runSwitch(repoRoot, targetBranch, noCreate, customConfig)
 
 	case "list":
 		jsonOutput := false
@@ -188,10 +206,10 @@ func main() {
 				jsonOutput = true
 			}
 		}
-		runList(cwd, jsonOutput, customConfig)
+		runList(repoRoot, jsonOutput, customConfig)
 
 	case "tui", "dashboard", "ui":
-		runTUI(cwd, customConfig)
+		runTUI(repoRoot, customConfig)
 
 	case "prune":
 		dryRun := false
@@ -204,26 +222,26 @@ func main() {
 				force = true
 			}
 		}
-		runPrune(cwd, dryRun, force, customConfig)
+		runPrune(repoRoot, dryRun, force, customConfig)
 
 	case "hooks":
 		subcmd := "status"
 		if len(cmdArgs) >= 1 {
 			subcmd = cmdArgs[0]
 		}
-		runHooks(cwd, subcmd)
+		runHooks(repoRoot, subcmd)
 
 	case "completion":
 		runCompletion(cmdArgs)
 
 	case "__complete":
-		runComplete(cwd, cmdArgs)
+		runComplete(repoRoot, cmdArgs)
 
 	case "risk":
-		runRisk(cwd, cmdArgs)
+		runRisk(repoRoot, cmdArgs)
 
 	case "hook-trigger":
-		runHookTrigger(cwd, cmdArgs, customConfig)
+		runHookTrigger(repoRoot, cmdArgs, customConfig)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", command)
