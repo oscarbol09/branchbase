@@ -59,7 +59,8 @@ func (c Config) DSN() string {
 }
 
 // DSNForDatabase returns a connection URL for a specific database using this
-// driver's configured credentials and transport settings.
+// driver's configured credentials and transport settings. An absolute Unix host
+// path names the directory containing PostgreSQL's .s.PGSQL.<port> socket.
 func (c Config) DSNForDatabase(dbName string) string {
 	host := c.Host
 	if host == "" {
@@ -87,6 +88,12 @@ func (c Config) DSNForDatabase(dbName string) string {
 		}
 	}
 	q := u.Query()
+	if strings.HasPrefix(host, "/") {
+		u.Host = ""
+		u.Path = "/" + strings.TrimPrefix(dbName, "/")
+		q.Set("host", host)
+		q.Set("port", fmt.Sprint(port))
+	}
 	q.Set("sslmode", sslMode)
 	u.RawQuery = q.Encode()
 

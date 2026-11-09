@@ -12,6 +12,12 @@ driver: "postgres"
 # Compose auto-detection supports MARIADB_USER, MARIADB_PASSWORD, MARIADB_ROOT_PASSWORD,
 # and MARIADB_DATABASE for MariaDB 10.6+, with MYSQL_* aliases retained as fallbacks.
 connection:
+  # PostgreSQL Unix sockets: set host to the socket directory and port to the
+  # server port. If using the proxy, also set socket_path to the full filename:
+  # host: "/var/run/postgresql"
+  # port: 5432
+  # socket_path: "/var/run/postgresql/.s.PGSQL.5432"
+  # socket_path alone does not configure the PostgreSQL driver.
   host: "${DB_HOST:-127.0.0.1}"
   port: 5433             # Real database port where Docker exposes the engine
   user: "${DB_USER:-postgres}"
