@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -587,6 +588,86 @@ func TestDSN(t *testing.T) {
 				t.Errorf("DSN() = %q; want %q", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestDSNForDatabaseSocketDirectory(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name     string
+		host     string
+		port     int
+		wantPort uint16
+		user     string
+	}{
+		{"default port", "/var/run/postgresql", 0, 5432, "user@name"},
+		{"custom port", "/tmp/postgresql", 55432, 55432, "user@name"},
+		{"escaped directory", "/tmp/postgres space&?#%", 5433, 5433, "user@name"},
+		{"no credentials", "/tmp/postgresql", -1, 5432, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{Host: tt.host, Port: tt.port, User: tt.user}
+			if cfg.User != "" {
+				cfg.Password = "p:a?s#word"
+			}
+			dsn := cfg.DSNForDatabase("branch db")
+			u, err := url.Parse(dsn)
+			if err != nil {
+				t.Fatalf("invalid DSN: %v", err)
+			}
+			if u.Host != "" || u.Query().Get("host") != tt.host {
+				t.Fatalf("socket directory must be a query parameter, got %q", dsn)
+			}
+			parsed, err := pq.NewConfig(dsn)
+			if err != nil {
+				t.Fatalf("pq rejected DSN: %v", err)
+			}
+			if parsed.Host != tt.host || parsed.Port != tt.wantPort || parsed.Database != "branch db" {
+				t.Fatal("DSN did not preserve the directory, port, or database")
+			}
+			if cfg.User != "" && (parsed.User != cfg.User || parsed.Password != cfg.Password) {
+				t.Fatal("DSN did not preserve credentials")
+			}
+			if cfg.User == "" && u.User != nil {
+				t.Fatal("DSN unexpectedly includes credentials")
+			}
+			if got := u.Query().Get("sslmode"); got != "disable" {
+				t.Fatalf("sslmode = %q, want disable", got)
+			}
+		})
+	}
+}
+
+func TestRegisteredDriverSocketDirectory(t *testing.T) {
+	t.Parallel()
+	drv, err := driver.GetDriver("postgres", map[string]interface{}{
+		"host":          "/tmp/postgresql",
+		"port":          55432,
+		"base_database": "postgres",
+	})
+	if err != nil {
+		t.Fatalf("GetDriver failed for socket directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := drv.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	d := drv.(*PostgresDriver)
+	parsed, err := pq.NewConfig(d.cfg.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Host != "/tmp/postgresql" || parsed.Port != 55432 || parsed.Database != "template1" {
+		t.Fatal("administrative pool lost its socket transport or maintenance database")
+	}
+	db, err := d.OpenDatabase("feature_db")
+	if err != nil {
+		t.Fatalf("OpenDatabase failed for socket directory: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

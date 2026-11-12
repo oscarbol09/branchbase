@@ -167,6 +167,7 @@ branchbase/
 
 ## Known Limitations & Trade-offs
 
+- **PostgreSQL Unix Sockets:** For driver-backed CLI commands, set `connection.host` to the socket directory (for example `/var/run/postgresql`) and `connection.port` to the server's port. The driver connects to `.s.PGSQL.<port>` inside that directory. The proxy still expects a full socket filename in `connection.socket_path`, so configure that separately when using the proxy (for example `/var/run/postgresql/.s.PGSQL.5432`). Setting `socket_path` alone does not configure the PostgreSQL driver.
 - **Proxy Protocol Scope:** The transparent TCP proxy routes PostgreSQL (`5432`) and MySQL (`3306`) wire protocols. File-based databases like SQLite and document engines like MongoDB are managed via CLI commands and Git hooks, but are not intercepted by the TCP proxy.
 - **MySQL Wire SSL:** When the transparent MySQL proxy runs in cleartext mode, incoming client connections requesting TLS (`ClientSSL`) fail closed with MySQL error code `2061`. Applications using MySQL through the proxy must configure SSL as disabled or optional in local development.
 - **PostgreSQL Connection Locking:** PostgreSQL's `CREATE DATABASE ... TEMPLATE` fails with SQLSTATE `55006` if active connections remain open on the template. BranchBase terminates idle connections via `pg_terminate_backend()` prior to cloning; long-running active transactions on the source database can still cause cloning to wait or fail.
