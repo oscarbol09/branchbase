@@ -820,3 +820,137 @@ proxy:
 		t.Errorf("expected proxy_port 8888, got %d", res2.ProxyPort)
 	}
 }
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+func buildBranchbase(t *testing.T) string {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping binary build in short mode")
+	}
+	bin := filepath.Join(t.TempDir(), "branchbase")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", bin, ".")
+	build.Dir = "."
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	return bin
+}
+
+func TestLoadRiskConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	cfg, err := loadRiskConfig(dir, "")
+	if err != nil {
+		t.Fatalf("a repo without a config is not an error: %v", err)
+	}
+	if cfg != nil {
+		t.Fatal("expected no config without a custom path")
+	}
+
+	if _, err := loadRiskConfig(dir, filepath.Join(dir, "missing.yaml")); err == nil {
+		t.Fatal("expected an error for a missing custom config")
+	}
+
+	custom := filepath.Join(dir, "custom.yaml")
+	if err := os.WriteFile(custom, []byte("driver: sqlite\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = loadRiskConfig(dir, custom)
+	if err != nil {
+		t.Fatalf("loadRiskConfig with a custom path: %v", err)
+	}
+	if cfg == nil || cfg.Driver != "sqlite" {
+		t.Fatalf("config = %+v, want driver sqlite", cfg)
+	}
+}
+
+func TestRiskHonorsCustomConfig(t *testing.T) {
+	bin := buildBranchbase(t)
+	repoDir := t.TempDir()
+	initGitRepo(t, repoDir)
+
+	migration := filepath.Join(repoDir, "migrations", "001_add_users.sql")
+	if err := os.MkdirAll(filepath.Dir(migration), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(migration, []byte("ALTER TABLE users ADD COLUMN email TEXT;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repoDir, "add", ".")
+	gitIn(t, repoDir, "commit", "-m", "migration")
+
+	t.Run("missing config is an error", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "missing.yaml")
+		cmd := exec.Command(bin, "--config", missing, "risk", "analyze", migration, "--offline", "--json")
+		cmd.Dir = repoDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err == nil {
+			t.Fatalf("expected a failure, stdout %s", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "configuration") {
+			t.Fatalf("stderr %q", stderr.String())
+		}
+	})
+
+	t.Run("custom default branch is honored", func(t *testing.T) {
+		custom := filepath.Join(t.TempDir(), "custom.yaml")
+		if err := os.WriteFile(custom, []byte("proxy:\n  default_branch: no-such-branch\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(bin, "--config", custom, "risk", "check", "--offline", "--json")
+		cmd.Dir = repoDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err == nil {
+			t.Fatalf("expected a failure, stdout %s", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "cannot resolve default branch") {
+			t.Fatalf("stderr %q", stderr.String())
+		}
+	})
+}
+
+func TestRiskCheckJSONKeepsStdoutClean(t *testing.T) {
+	bin := buildBranchbase(t)
+	repoDir := t.TempDir()
+	initGitRepo(t, repoDir)
+	gitIn(t, repoDir, "checkout", "-b", "feature")
+
+	migration := filepath.Join(repoDir, "migrations", "001_drop_users.sql")
+	if err := os.MkdirAll(filepath.Dir(migration), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(migration, []byte("DROP TABLE users;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repoDir, "add", ".")
+	gitIn(t, repoDir, "commit", "-m", "drop users")
+
+	cmd := exec.Command(bin, "risk", "check", "--offline", "--json")
+	cmd.Dir = repoDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("a blocking migration should fail, stdout %s", stdout.String())
+	}
+	var report map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "blocked") {
+		t.Fatalf("stderr %q", stderr.String())
+	}
+}
