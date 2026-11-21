@@ -238,7 +238,7 @@ func main() {
 		runComplete(repoRoot, cmdArgs)
 
 	case "risk":
-		runRisk(repoRoot, cmdArgs)
+		runRisk(repoRoot, cmdArgs, customConfig)
 
 	case "hook-trigger":
 		runHookTrigger(repoRoot, cmdArgs, customConfig)
