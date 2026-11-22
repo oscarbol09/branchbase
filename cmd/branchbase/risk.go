@@ -17,7 +17,7 @@ import (
 	"github.com/branchbase/branchbase/internal/risk"
 )
 
-func runRisk(cwd string, args []string) {
+func runRisk(cwd string, args []string, customConfig string) {
 	if len(args) == 0 {
 		printRiskUsage()
 		os.Exit(2)
@@ -49,7 +49,7 @@ func runRisk(cwd string, args []string) {
 				offline = true
 			}
 		}
-		runRiskAnalyze(cwd, filePath, jsonOutput, githubOutput, offline)
+		runRiskAnalyze(cwd, filePath, jsonOutput, githubOutput, offline, customConfig)
 
 	case "check":
 		policyPath := ""
@@ -82,7 +82,7 @@ func runRisk(cwd string, args []string) {
 				jsonOutput = true
 			}
 		}
-		runRiskCheck(cwd, branchName, policyPath, force, offline, jsonOutput)
+		runRiskCheck(cwd, branchName, policyPath, force, offline, jsonOutput, customConfig)
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown risk subcommand %q\n\n", subcommand)
@@ -201,7 +201,18 @@ func resolveClassifier(offline bool) risk.RiskClassifier {
 	return risk.NewHeuristicClassifier()
 }
 
-func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bool) {
+// loadRiskConfig loads the config for a risk command. A custom path that cannot be read is an
+// error, while a missing default config in the repo is not, and the callers keep their defaults.
+func loadRiskConfig(cwd, customConfig string) (*config.Config, error) {
+	target := resolveConfigTarget(cwd, customConfig)
+	cfg, err := config.LoadConfig(target)
+	if err != nil && strings.TrimSpace(customConfig) != "" {
+		return nil, fmt.Errorf("could not load configuration from %q: %w", customConfig, err)
+	}
+	return cfg, nil
+}
+
+func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bool, customConfig string) {
 	fullPath := targetFile
 	if !filepath.IsAbs(fullPath) {
 		fullPath = filepath.Join(cwd, targetFile)
@@ -222,7 +233,11 @@ func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bo
 		os.Exit(2)
 	}
 
-	cfg, _ := config.LoadConfig(cwd)
+	cfg, err := loadRiskConfig(cwd, customConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
 	engine := "postgres"
 	if cfg != nil && cfg.Driver != "" {
 		engine = cfg.Driver
@@ -273,7 +288,7 @@ func runRiskAnalyze(cwd, targetFile string, jsonOutput, githubOutput, offline bo
 	fmt.Print(risk.FormatPrettyTerminal(report))
 }
 
-func runRiskCheck(cwd, branchName, policyPath string, force, offline, jsonOutput bool) {
+func runRiskCheck(cwd, branchName, policyPath string, force, offline, jsonOutput bool, customConfig string) {
 	if branchName == "" {
 		resolved, err := git.ResolveCurrentBranch(cwd)
 		if err == nil {
@@ -283,7 +298,11 @@ func runRiskCheck(cwd, branchName, policyPath string, force, offline, jsonOutput
 		}
 	}
 
-	cfg, _ := config.LoadConfig(cwd)
+	cfg, err := loadRiskConfig(cwd, customConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
 	engine := "postgres"
 	if cfg != nil && cfg.Driver != "" {
 		engine = cfg.Driver
@@ -347,11 +366,16 @@ func runRiskCheck(cwd, branchName, policyPath string, force, offline, jsonOutput
 	}
 
 	if report.Blocked {
+		// With --json the caller parses stdout, so the human-readable status goes to stderr.
+		out := os.Stdout
+		if jsonOutput {
+			out = os.Stderr
+		}
 		if force {
-			fmt.Println("⚠️  CRITICAL risk detected, but proceeding due to --force flag.")
+			fmt.Fprintln(out, "⚠️  CRITICAL risk detected, but proceeding due to --force flag.")
 			os.Exit(0)
 		}
-		fmt.Println("❌ Migration blocked by risk gate policy. Use 'branchbase risk analyze <file>' or pass --force.")
+		fmt.Fprintln(out, "❌ Migration blocked by risk gate policy. Use 'branchbase risk analyze <file>' or pass --force.")
 		os.Exit(1)
 	}
 
