@@ -1,4 +1,5 @@
 # BranchBase Configuration Specification
+# Inspect this file with: branchbase status --config branchbase.example.yaml --json
 # Save this file as .branchbase.yaml or .branchbase.yml in your repository root
 # Environment variable expansion (${ENV_VAR} or $ENV_VAR) is supported across all fields.
 

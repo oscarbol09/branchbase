@@ -819,6 +819,40 @@ proxy:
 	if res2.ProxyPort != 8888 {
 		t.Errorf("expected proxy_port 8888, got %d", res2.ProxyPort)
 	}
+
+	gitIn(t, repoDir, "checkout", "--detach", "HEAD")
+	cmd := exec.Command(bin, "status", "--json", "--config", customCfg)
+	cmd.Dir = repoDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("status with detached HEAD: %v\n%s", err, out)
+	}
+	var detached statusOutput
+	if err := json.Unmarshal(out, &detached); err != nil || detached.Branch != "unknown" || detached.Driver != "sqlite" {
+		t.Fatalf("unexpected detached status: %s (%v)", out, err)
+	}
+}
+
+func TestCommandHelpDoesNotRunCommands(t *testing.T) {
+	bin := buildBranchbase(t)
+	for _, args := range [][]string{
+		{"init", "--help"}, {"switch", "-h"}, {"hooks", "install", "--help"},
+		{"risk", "analyze", "--help"}, {"prune", "--force", "-h"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			cmd := exec.Command(bin, args...)
+			cmd.Dir = dir
+			out, err := cmd.CombinedOutput()
+			if err != nil || !strings.Contains(string(out), "branchbase "+args[0]) {
+				t.Fatalf("expected command usage: %v\n%s", err, out)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("help changed working directory: %v (%v)", entries, err)
+			}
+		})
+	}
 }
 
 func gitIn(t *testing.T, dir string, args ...string) {
