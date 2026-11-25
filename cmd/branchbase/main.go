@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -65,6 +66,35 @@ Other:
 Run 'branchbase <command> --help' for more information.`)
 }
 
+func printCommandUsage(command string) bool {
+	switch command {
+	case "risk":
+		printRiskUsage()
+		return true
+	case "help", "-h", "--help":
+		printUsage()
+		return true
+	case "init":
+		command += " [--skip-hooks]"
+	case "status", "list":
+		command += " [--json]"
+	case "switch":
+		command += " <branch-name> [--no-create]"
+	case "prune":
+		command += " [--dry-run] [--force]"
+	case "hooks":
+		command += " <install|uninstall|status>"
+	case "completion":
+		command += " <bash|zsh|fish|powershell>"
+	case "proxy", "tui", "dashboard", "ui", "doctor", "version":
+		// These commands take no arguments.
+	default:
+		return false
+	}
+	fmt.Println("Usage: branchbase " + command)
+	return true
+}
+
 // extractConfigFlag scans args for --config <path>, -c <path>, --config=<path>, or -c=<path>.
 // It returns the resolved config path (if any) and the remaining arguments with the config flags removed.
 func extractConfigFlag(args []string) (string, []string) {
@@ -119,6 +149,11 @@ func main() {
 
 	command := remainingArgs[0]
 	cmdArgs := remainingArgs[1:]
+	if slices.Contains(cmdArgs, "--help") || slices.Contains(cmdArgs, "-h") {
+		if printCommandUsage(command) {
+			return
+		}
+	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -298,6 +333,7 @@ func runInit(cwd string, skipHooks bool) error {
 
 // statusOutput is the JSON shape for `branchbase status --json`.
 type statusOutput struct {
+	branchWarning  error
 	Branch         string `json:"branch"`
 	Sanitized      string `json:"sanitized"`
 	Database       string `json:"database"`
@@ -349,6 +385,7 @@ func buildStatus(cwd string, configPath ...string) (statusOutput, error) {
 	hooksInstalled := hook.AreHooksInstalled(cwd)
 
 	out := statusOutput{
+		branchWarning:  branchErr,
 		Branch:         branch,
 		Sanitized:      sanitized,
 		Database:       statusDatabaseName(cfg, sanitized),
@@ -357,13 +394,13 @@ func buildStatus(cwd string, configPath ...string) (statusOutput, error) {
 		Backend:        backend,
 		HooksInstalled: hooksInstalled,
 	}
-	return out, branchErr
+	return out, nil
 }
 
 func runStatus(cwd string, jsonOutput bool, configPath ...string) {
-	info, branchErr := buildStatus(cwd, configPath...)
-	if len(configPath) > 0 && strings.TrimSpace(configPath[0]) != "" && branchErr != nil {
-		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", branchErr)
+	info, err := buildStatus(cwd, configPath...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -377,8 +414,8 @@ func runStatus(cwd string, jsonOutput bool, configPath ...string) {
 		return
 	}
 
-	if branchErr != nil {
-		fmt.Printf("⚠️  Could not resolve Git branch: %v\n", branchErr)
+	if info.branchWarning != nil {
+		fmt.Printf("⚠️  Could not resolve Git branch: %v\n", info.branchWarning)
 	}
 
 	fmt.Println("🌿 BranchBase Status")

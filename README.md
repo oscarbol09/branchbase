@@ -76,6 +76,8 @@ BranchBase pairs automated Git branch transitions with database cloning mechanis
 
 ## Command & CLI Reference
 
+Use `branchbase <command> --help` or `-h` to see usage before any repository or database operation. In detached HEAD, `status` reports the branch as `unknown`, including when using a custom configuration.
+
 | Command | What it does |
 | :--- | :--- |
 | `branchbase init [--skip-hooks]` | Interactively inspect repository and generate `.branchbase.json` (optionally skip hook installation) |
