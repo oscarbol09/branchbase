@@ -118,26 +118,6 @@ func TestResolveRepositoryRoot(t *testing.T) {
 			wantRel: "inner",
 		},
 		{
-			name: "relative startDir returns absolute path",
-			setup: func(t *testing.T, root string) string {
-				mkdirAll(t, filepath.Join(root, ".git"))
-				src := filepath.Join(root, "src")
-				mkdirAll(t, src)
-				cwd, err := os.Getwd()
-				if err != nil {
-					t.Fatalf("failed to get cwd: %v", err)
-				}
-				rel, err := filepath.Rel(cwd, src)
-				if err != nil {
-					t.Fatalf("failed to compute relative path: %v", err)
-				}
-				if filepath.IsAbs(rel) {
-					t.Fatalf("expected relative path, got %q", rel)
-				}
-				return rel
-			},
-		},
-		{
 			name: "no git directory anywhere",
 			setup: func(t *testing.T, root string) string {
 				start := filepath.Join(root, "x", "y")
@@ -173,6 +153,21 @@ func TestResolveRepositoryRoot(t *testing.T) {
 				t.Errorf("ResolveRepositoryRoot(%q) = %q; want %q", startDir, got, want)
 			}
 		})
+	}
+}
+
+func TestResolveRepositoryRootFromRelativePath(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.Mkdir(".git", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir("src", 0755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveRepositoryRoot("src")
+	if err != nil || got != root {
+		t.Fatalf("ResolveRepositoryRoot(src) = %q, %v; want %q, nil", got, err, root)
 	}
 }
 
